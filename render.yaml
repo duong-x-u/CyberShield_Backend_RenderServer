@@ -5,7 +5,7 @@ services:
     buildCommand: |
       pip install -r requirements.txt
     startCommand: |
-      gunicorn app:app --bind 0.0.0.0:$PORT
+      gunicorn "api.analyze:app" --bind 0.0.0.0:$PORT
     envVars:
       - key: PORT
         value: 10000
@@ -20,3 +20,4 @@ services:
       name: data
       mountPath: /app/data
       sizeGB: 1
+
