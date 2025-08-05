@@ -1,30 +1,21 @@
 import json
 import asyncio
-import aiohttp
 import os
-from flask import Flask, request, jsonify
-from openai import AsyncOpenAI, OpenAIError
+from flask import Blueprint, request, jsonify
 import google.generativeai as genai
 
-# Khởi tạo Flask app
-app = Flask(__name__)
+# Khởi tạo Blueprint
+analyze_endpoint = Blueprint('analyze_endpoint', __name__)
 
 # Cấu hình API keys từ environment variables
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
-OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
-OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
 
-# Validate API keys
+# Validate API key
 if not GOOGLE_API_KEY:
     raise ValueError("GOOGLE_API_KEY environment variable is required")
-if not OPENAI_API_KEY:
-    raise ValueError("OPENAI_API_KEY environment variable is required")
-if not OPENROUTER_API_KEY:
-    raise ValueError("OPENROUTER_API_KEY environment variable is required")
 
-# Cấu hình clients
+# Cấu hình client
 genai.configure(api_key=GOOGLE_API_KEY)
-openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 # Prompt chuẩn
 UNIFIED_PROMPT = lambda text: f'''
@@ -53,84 +44,19 @@ async def analyze_with_gemini(text):
         print(f"Gemini API Error: {str(e)}")
         return None
 
-async def analyze_with_openai(text):
-    try:
-        response = await openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": UNIFIED_PROMPT(text)}]
-        )
-        content = response.choices[0].message.content
-        return json.loads(content)
-    except json.JSONDecodeError as e:
-        print(f"OpenAI JSON Decode Error: {str(e)}. Response content: {content}")
-        return None
-    except OpenAIError as e:
-        print(f"OpenAI API Error: {str(e)}")
-        return None
-
-async def synthesize_results_with_claude(analyses):
-    try:
-        prompt = f'''
-Bạn là chuyên gia an ninh, hãy tổng hợp các phân tích sau thành một kết quả JSON cuối cùng và chính xác nhất với các key:
-- "is_scam", "reason", "types", "score", "recommend".
-
---- CÁC PHÂN TÍCH ---
-{json.dumps(analyses, ensure_ascii=False, indent=2)}
-'''.strip()
-
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                'https://openrouter.ai/api/v1/chat/completions',
-                headers={
-                    'Authorization': f'Bearer {OPENROUTER_API_KEY}',
-                    'Content-Type': 'application/json'
-                },
-                json={
-                    "model": "anthropic/claude-3-sonnet",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.2
-                }
-            ) as resp:
-                resp.raise_for_status()  # Sẽ raise lỗi cho status codes 4xx/5xx
-                result = await resp.json()
-                content = result["choices"][0]["message"]["content"]
-                return json.loads(content)
-    except json.JSONDecodeError as e:
-        print(f"Claude JSON Decode Error: {str(e)}. Response content: {content}")
-        return None
-    except aiohttp.ClientError as e:
-        print(f"Claude (aiohttp) Error: {str(e)}")
-        return None
-    except Exception as e:
-        # Bắt các lỗi không mong muốn khác
-        print(f"Claude Synthesizer Unexpected Error: {str(e)}")
-        return None
-
 async def perform_full_analysis(text):
     """
-    Hàm điều phối chính, chạy tất cả các tác vụ bất đồng bộ.
+    Hàm điều phối chính, chỉ chạy phân tích với Gemini.
     """
-    # Chạy các phân tích ban đầu song song
-    analyses = await asyncio.gather(
-        analyze_with_gemini(text),
-        analyze_with_openai(text)
-    )
-    successful_analyses = [a for a in analyses if a is not None]
-
-    if not successful_analyses:
-        # Trả về một dict lỗi để hàm route có thể xử lý
-        return {'error': 'All primary analysis AIs failed', 'status_code': 500}
-
-    # Tổng hợp kết quả
-    final_result = await synthesize_results_with_claude(successful_analyses)
+    final_result = await analyze_with_gemini(text)
 
     if not final_result:
-        return {'error': 'Synthesis AI failed', 'status_code': 500}
+        return {'error': 'Gemini analysis failed', 'status_code': 500}
 
     return final_result
 
 
-@app.route('/api/analyze', methods=['POST'])
+@analyze_endpoint.route('/analyze', methods=['POST'])
 def analyze_text():
     try:
         data = request.get_json()
@@ -154,7 +80,3 @@ def analyze_text():
         # Bắt các lỗi không mong muốn ở tầng cao nhất
         print(f"Unhandled error in /api/analyze endpoint: {str(e)}")
         return jsonify({'error': 'An internal server error occurred'}), 500
-
-# Chạy local
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=3000)

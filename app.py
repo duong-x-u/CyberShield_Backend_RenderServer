@@ -39,30 +39,7 @@ def health_check():
         ))
     })
 
-@app.route('/api/analyze', methods=['POST'])
-def analyze():
-    """Main analyze endpoint"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
-        
-        # Process the analysis
-        result = analyze_data(data)
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"Error in analyze endpoint: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
 
-def analyze_data(data):
-    """Placeholder function for analysis logic"""
-    # This will be replaced with actual analysis logic from api/analyze.py
-    return {
-        'status': 'success',
-        'data': data,
-        'message': 'Analysis completed'
-    }
 
 @app.errorhandler(404)
 def not_found(error):
