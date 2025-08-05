@@ -1,0 +1,10 @@
+{
+  "name": "cybershield-nodejs-engine",
+  "version": "1.0.0",
+  "description": "The Node.js backend running inside the mobile app.",
+  "main": "main.js",
+  "dependencies": {
+    "axios": "^1.6.7",
+    "rn-bridge": "https://github.com/nodejs-mobile/rn-bridge/releases/download/v1.1.0/rn-bridge-1.1.0.tgz"
+  }
+}
