@@ -66,9 +66,9 @@ async def perform_full_analysis(text):
 @analyze_endpoint.route('/analyze', methods=['POST'])
 def analyze_text():
     try:
-        data = request.get_json()
-        if not data or 'text' not in data:
-            return jsonify({'error': 'Invalid request body, missing "text" key'}), 400
+        data = request.get_json(silent=True) # Sử dụng silent=True để tránh lỗi 400 nếu JSON không hợp lệ
+        if data is None or 'text' not in data:
+            return jsonify({'error': 'Invalid request body, missing "text" key or malformed JSON'}), 400
 
         text = data.get('text', '')
         if not text:
