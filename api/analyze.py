@@ -1,6 +1,7 @@
 import json
 import asyncio
 import os
+import random
 from flask import Blueprint, request, jsonify
 import google.generativeai as genai
 
@@ -8,14 +9,16 @@ import google.generativeai as genai
 analyze_endpoint = Blueprint('analyze_endpoint', __name__)
 
 # Cấu hình API keys từ environment variables
-GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
+GOOGLE_API_KEYS_STR = os.environ.get('GOOGLE_API_KEYS')
 
-# Validate API key
-if not GOOGLE_API_KEY:
-    raise ValueError("GOOGLE_API_KEY environment variable is required")
+# Validate và phân tích danh sách API keys
+if not GOOGLE_API_KEYS_STR:
+    raise ValueError("GOOGLE_API_KEYS environment variable is required (comma-separated)")
 
-# Cấu hình client
-genai.configure(api_key=GOOGLE_API_KEY)
+GOOGLE_API_KEYS = [key.strip() for key in GOOGLE_API_KEYS_STR.split(',') if key.strip()]
+
+if not GOOGLE_API_KEYS:
+    raise ValueError("GOOGLE_API_KEYS environment variable must contain at least one valid key")
 
 # Prompt chuẩn
 UNIFIED_PROMPT = lambda text: f'''
@@ -32,6 +35,10 @@ Bạn là một hệ thống phân tích an toàn thông minh. Hãy phân tích 
 
 async def analyze_with_gemini(text):
     try:
+        # Chọn ngẫu nhiên một API key từ danh sách
+        selected_api_key = random.choice(GOOGLE_API_KEYS)
+        genai.configure(api_key=selected_api_key)
+
         model = genai.GenerativeModel('gemini-1.5-flash-latest')
         response = await model.generate_content_async(UNIFIED_PROMPT(text))
         # Cẩn thận hơn khi parse JSON
@@ -74,7 +81,7 @@ def analyze_text():
         if 'error' in result:
             return jsonify({'error': result['error']}), result.get('status_code', 500)
 
-        return jsonify(result)
+        return jsonify({'result': result})
 
     except Exception as e:
         # Bắt các lỗi không mong muốn ở tầng cao nhất
