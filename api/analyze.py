@@ -4,6 +4,7 @@ import os
 import random
 import hashlib
 import redis
+import aiohttp
 from flask import Blueprint, request, jsonify
 import google.generativeai as genai
 
@@ -18,19 +19,25 @@ try:
         redis_client = None
     else:
         redis_client = redis.from_url(REDIS_URL)
-        redis_client.ping() # Kiểm tra kết nối
+        redis_client.ping()
         print("Kết nối Redis thành công.")
 except redis.exceptions.ConnectionError as e:
     print(f"Lỗi kết nối Redis: {e}. Tính năng cache sẽ bị vô hiệu hóa.")
     redis_client = None
 
-# --- Cấu hình Gemini API ---
+# --- Cấu hình APIs ---
 GOOGLE_API_KEYS_STR = os.environ.get('GOOGLE_API_KEYS')
+SAFE_BROWSING_API_KEY = os.environ.get('SAFE_BROWSING_API_KEY')
+
 if not GOOGLE_API_KEYS_STR:
     raise ValueError("Biến môi trường GOOGLE_API_KEYS là bắt buộc.")
 GOOGLE_API_KEYS = [key.strip() for key in GOOGLE_API_KEYS_STR.split(',') if key.strip()]
 if not GOOGLE_API_KEYS:
     raise ValueError("GOOGLE_API_KEYS phải chứa ít nhất một key hợp lệ.")
+if not SAFE_BROWSING_API_KEY:
+    print("Cảnh báo: SAFE_BROWSING_API_KEY không được thiết lập. Tính năng quét URL sẽ bị vô hiệu hóa.")
+
+# --- Logic Phân tích ---
 
 UNIFIED_PROMPT = lambda text: f'''
 Bạn là một hệ thống phân tích an toàn thông minh. Hãy phân tích đoạn tin nhắn sau và trả lời dưới dạng JSON với các key:
@@ -44,6 +51,7 @@ Bạn là một hệ thống phân tích an toàn thông minh. Hãy phân tích 
 '''
 
 async def analyze_with_gemini(text):
+    # ... (Nội dung hàm này không đổi)
     try:
         selected_api_key = random.choice(GOOGLE_API_KEYS)
         genai.configure(api_key=selected_api_key)
@@ -51,17 +59,39 @@ async def analyze_with_gemini(text):
         response = await model.generate_content_async(UNIFIED_PROMPT(text))
         json_text = response.text.replace('```json', '').replace('```', '').strip()
         return json.loads(json_text)
-    except json.JSONDecodeError as e:
-        print(f"Lỗi giải mã JSON từ Gemini: {e}. Phản hồi: {response.text}")
-        return None
     except Exception as e:
         print(f"Lỗi API Gemini: {e}")
         return None
 
-async def perform_full_analysis(text):
-    cache_key = f"analysis:{hashlib.sha256(text.encode()).hexdigest()}"
+async def check_urls_safety(urls: list):
+    if not SAFE_BROWSING_API_KEY or not urls:
+        return []
 
-    # 1. Kiểm tra cache trước
+    safe_browsing_url = f"https://safebrowsing.googleapis.com/v4/threatMatches:find?key={SAFE_BROWSING_API_KEY}"
+    payload = {
+        "threatInfo": {
+            "threatTypes": ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APPLICATION"],
+            "platformTypes": ["ANY_PLATFORM"],
+            "threatEntryTypes": ["URL"],
+            "threatEntries": [{"url": u} for u in urls]
+        }
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(safe_browsing_url, json=payload) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get("matches", [])
+                else:
+                    print(f"Lỗi API Safe Browsing: {response.status} - {await response.text()}")
+                    return []
+    except Exception as e:
+        print(f"Lỗi khi gọi Safe Browsing API: {e}")
+        return []
+
+async def perform_full_analysis(text, urls):
+    cache_key = f"analysis:{hashlib.sha256(text.encode()).hexdigest()}"
     if redis_client:
         try:
             cached_result = redis_client.get(cache_key)
@@ -69,19 +99,29 @@ async def perform_full_analysis(text):
                 print(f"Cache hit cho key: {cache_key}")
                 return json.loads(cached_result)
         except redis.exceptions.RedisError as e:
-            print(f"Lỗi truy cập Redis: {e}. Bỏ qua cache.")
+            print(f"Lỗi truy cập Redis: {e}")
 
-    # 2. Nếu không có trong cache, gọi Gemini
-    print(f"Cache miss cho key: {cache_key}. Gọi API Gemini.")
-    final_result = await analyze_with_gemini(text)
+    # Chạy song song cả hai tác vụ
+    gemini_task = analyze_with_gemini(text)
+    urls_task = check_urls_safety(urls)
+    gemini_result, url_matches = await asyncio.gather(gemini_task, urls_task)
 
-    if not final_result:
+    if not gemini_result:
         return {'error': 'Phân tích với Gemini thất bại', 'status_code': 500}
 
-    # 3. Lưu kết quả vào cache
+    # Tổng hợp kết quả
+    final_result = gemini_result
+    final_result['url_analysis'] = url_matches
+
+    if url_matches:
+        final_result['is_scam'] = True
+        final_result['reason'] += " Ngoài ra, một hoặc nhiều URL trong tin nhắn được xác định là không an toàn."
+        # Tăng điểm nguy hiểm nếu có URL độc hại
+        final_result['score'] = max(final_result['score'], 4)
+
     if redis_client:
         try:
-            redis_client.setex(cache_key, 86400, json.dumps(final_result)) # Cache trong 24 giờ
+            redis_client.setex(cache_key, 86400, json.dumps(final_result))
         except redis.exceptions.RedisError as e:
             print(f"Lỗi lưu vào Redis: {e}")
 
@@ -92,13 +132,14 @@ def analyze_text():
     try:
         data = request.get_json(silent=True)
         if data is None or 'text' not in data:
-            return jsonify({'error': 'Yêu cầu không hợp lệ, thiếu key "text" hoặc JSON sai định dạng'}), 400
+            return jsonify({'error': 'Yêu cầu không hợp lệ'}), 400
 
         text = data.get('text', '')
+        urls = data.get('urls', []) # Lấy danh sách URLs
         if not text:
             return jsonify({'error': 'Không có văn bản để phân tích'}), 400
 
-        result = asyncio.run(perform_full_analysis(text))
+        result = asyncio.run(perform_full_analysis(text, urls))
 
         if 'error' in result:
             return jsonify({'error': result['error']}), result.get('status_code', 500)
