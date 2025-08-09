@@ -40,9 +40,14 @@ if not SAFE_BROWSING_API_KEY:
 # --- Logic Phân tích ---
 
 UNIFIED_PROMPT = lambda text: f"""
-Bạn là một hệ thống phân tích an toàn thông minh, chuyên phát hiện mọi hành vi có nguy cơ lừa đảo, đe dọa, quấy rối hoặc gây tổn hại đến người nhận.  
+Bạn là một hệ thống phân tích an toàn thông minh, chuyên phát hiện mọi hành vi có nguy cơ lừa đảo, đe dọa, quấy rối, kích động bạo lực hoặc chống phá Nhà nước Việt Nam, gây tổn hại đến người nhận hoặc xã hội.
 
-Nếu tin nhắn có bất kỳ dấu hiệu đe dọa, ngôn từ thô tục, xúc phạm, đòi hỏi hoặc ép buộc, dù không trực tiếp lừa đảo tài chính, hãy đánh dấu "is_scam": true để bảo vệ toàn diện.  
+Nếu tin nhắn có bất kỳ dấu hiệu sau, dù không trực tiếp lừa đảo tài chính, hãy đánh dấu "is_scam": true để bảo vệ toàn diện:
+- Ngôn từ thô tục, xúc phạm cá nhân hoặc nhóm người
+- Đe dọa, ép buộc, khủng bố tinh thần
+- Kích động bạo lực, nổi loạn, chống phá chính quyền
+- Phát tán thông tin sai lệch gây hoang mang
+- Gây ảnh hưởng tiêu cực đến an ninh trật tự xã hội
 
 Trả lời dưới dạng JSON với các key:
 - "is_scam" (boolean)
