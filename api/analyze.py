@@ -48,7 +48,7 @@ Trả lời dưới dạng JSON với các key:
 - "is_scam" (boolean)
 - "reason" (string)
 - "types" (string)
-- "score" (number 1-5)
+- "score" (number 0-5)  # 0 là không nguy hiểm, 5 là rất nguy hiểm
 - "recommend" (string)
 
 Đoạn tin nhắn: {text}
