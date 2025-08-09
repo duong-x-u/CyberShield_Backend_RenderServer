@@ -39,8 +39,12 @@ if not SAFE_BROWSING_API_KEY:
 
 # --- Logic Phân tích ---
 
-UNIFIED_PROMPT = lambda text: f'''
-Bạn là một hệ thống phân tích an toàn thông minh. Hãy phân tích đoạn tin nhắn sau và trả lời dưới dạng JSON với các key:
+UNIFIED_PROMPT = lambda text: f"""
+Bạn là một hệ thống phân tích an toàn thông minh, chuyên phát hiện mọi hành vi có nguy cơ lừa đảo, đe dọa, quấy rối hoặc gây tổn hại đến người nhận.  
+
+Nếu tin nhắn có bất kỳ dấu hiệu đe dọa, ngôn từ thô tục, xúc phạm, đòi hỏi hoặc ép buộc, dù không trực tiếp lừa đảo tài chính, hãy đánh dấu "is_scam": true để bảo vệ toàn diện.  
+
+Trả lời dưới dạng JSON với các key:
 - "is_scam" (boolean)
 - "reason" (string)
 - "types" (string)
@@ -48,7 +52,7 @@ Bạn là một hệ thống phân tích an toàn thông minh. Hãy phân tích 
 - "recommend" (string)
 
 Đoạn tin nhắn: {text}
-'''
+"""
 
 async def analyze_with_gemini(text):
     # ... (Nội dung hàm này không đổi)
