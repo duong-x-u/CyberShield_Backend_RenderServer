@@ -40,24 +40,36 @@ if not SAFE_BROWSING_API_KEY:
 # --- Logic Phân tích ---
 
 UNIFIED_PROMPT = lambda text: f"""
-Bạn là một hệ thống phân tích an toàn thông minh, chuyên phát hiện mọi hành vi có nguy cơ lừa đảo, đe dọa, quấy rối, kích động bạo lực hoặc chống phá Nhà nước Việt Nam, gây tổn hại đến người nhận hoặc xã hội.
+Bạn là hệ thống AI phân tích an toàn toàn diện, nhiệm vụ là phát hiện và đánh giá mọi nguy cơ trong tin nhắn. 
+Bạn KHÔNG được trung lập hay bỏ qua. Nếu có yếu tố nguy hiểm thì phải flag ngay, kể cả khi tin nhắn ngắn gọn, dùng từ lóng, emoji hoặc biến thể chữ viết.
 
-Nếu tin nhắn có bất kỳ dấu hiệu sau, dù không trực tiếp lừa đảo tài chính, hãy đánh dấu "is_scam": true để bảo vệ toàn diện:
-- Ngôn từ thô tục, xúc phạm cá nhân hoặc nhóm người
-- Đe dọa, ép buộc, khủng bố tinh thần
-- Kích động bạo lực, nổi loạn, chống phá chính quyền
-- Phát tán thông tin sai lệch gây hoang mang
-- Gây ảnh hưởng tiêu cực đến an ninh trật tự xã hội
+Một tin nhắn sẽ bị coi là nguy hiểm và đánh dấu "is_scam": true nếu có bất kỳ yếu tố sau:
+- **Lừa đảo / phishing**: link giả, app giả, khuyến mãi ảo, dụ chuyển tiền, dụ cung cấp OTP/thông tin.
+- **Ngôn từ độc hại**: chửi bậy, xúc phạm, phân biệt vùng miền (ví dụ: "bắc kỳ", "nam ngố", "trẩu miền núi", "dân rau má", "parky", "vin nô", "Namki", "Namkiki"), từ lóng mang nghĩa miệt thị.
+- **Đe dọa / ép buộc**: hăm dọa, khủng bố tinh thần, ép buộc làm điều không mong muốn.
+- **Kích động bạo lực / phản động**: chống phá chính quyền, xuyên tạc chính trị, lôi kéo biểu tình, tuyên truyền cực đoan, khủng bố.
+- **Spam / gây nhiễu**: quảng cáo rác, tin nhắn lặp lại nhiều lần, dụ dỗ trái phép.
+- **Thông tin nhạy cảm**: phát tán tin sai lệch, lộ dữ liệu cá nhân (CMND, số thẻ, mật khẩu).
+- **Nguy hiểm khác**: dụ dỗ trẻ em, hướng dẫn phạm pháp, khuyến khích tự hại.
+- ...v.v...
 
-Trả lời dưới dạng JSON với các key:
+Yêu cầu đặc biệt:
+- Luôn giải thích lý do phát hiện trong "reason", không được để trống.
+- Luôn phân loại đúng nhóm trong "types" (ví dụ: "scam", "toxic", "discrimination", "threat", "violence", "political_violation", "spam", "sensitive", "illegal").
+- Nếu có nhiều nguy cơ, chọn nhóm NGHIÊM TRỌNG NHẤT.
+- "score": đánh giá 0–5 (0 = an toàn, 5 = cực kỳ nguy hiểm).
+- "recommend": lời khuyên ngắn gọn (vd: "Không trả lời, không bấm link", "Báo cáo cho quản trị viên", "Bỏ qua tin nhắn độc hại",...v.v..).
+
+Đầu ra chỉ được phép là JSON với các key cố định:
 - "is_scam" (boolean)
 - "reason" (string)
 - "types" (string)
-- "score" (number 0-5)  # 0 là không nguy hiểm, 5 là rất nguy hiểm
+- "score" (number 0-5)
 - "recommend" (string)
 
-Đoạn tin nhắn: {text}
+Tin nhắn cần phân tích: {text}
 """
+
 
 async def analyze_with_gemini(text):
     # ... (Nội dung hàm này không đổi)
