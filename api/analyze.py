@@ -116,6 +116,9 @@ async def perform_full_analysis(text, urls):
     urls_task = check_urls_safety(urls)
     gemini_result, url_matches = await asyncio.gather(gemini_task, urls_task)
 
+    print(f"DEBUG: Gemini Result: {gemini_result}")
+    print(f"DEBUG: URL Matches: {url_matches}")
+
     if not gemini_result:
         return {'error': 'Phân tích với Gemini thất bại', 'status_code': 500}
 
@@ -135,6 +138,7 @@ async def perform_full_analysis(text, urls):
     #     except redis.exceptions.RedisError as e:
     #         print(f"Lỗi lưu vào Redis: {e}")
 
+    print(f"DEBUG: Final Result: {final_result}")
     return final_result
 
 @analyze_endpoint.route('/analyze', methods=['POST'])
