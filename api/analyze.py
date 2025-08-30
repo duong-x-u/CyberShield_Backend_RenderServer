@@ -58,7 +58,7 @@ Yêu cầu đặc biệt:
 - Luôn phân loại đúng nhóm trong "types" (ví dụ: "scam", "toxic", "discrimination", "threat", "violence", "political_violation", "spam", "sensitive", "illegal").
 - Nếu có nhiều nguy cơ, chọn nhóm NGHIÊM TRỌNG NHẤT.
 - "score": đánh giá 0–5 (0 = an toàn, 5 = cực kỳ nguy hiểm).
-- "recommend": lời khuyên ngắn gọn (vd: "Không trả lời, không bấm link", "Báo cáo cho quản trị viên", "Bỏ qua tin nhắn độc hại",...v.v..).
+- "recommend": lời khuyên ngắn gọn (vd: "Không trả lời, không bấm link", "Báo cáo cho quản trị viên", "Bỏ qua tin nhắn độc hại",...v.v..), đồng thời đề xuất các số điện thoại khẩn cấp hay người hỗ trợ nếu cần thiết
 
 Đầu ra chỉ được phép là JSON với các key cố định:
 - "is_scam" (boolean)
