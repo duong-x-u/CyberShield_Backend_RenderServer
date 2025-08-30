@@ -20,37 +20,41 @@ app.register_blueprint(analyze_endpoint, url_prefix='/api')
 
 @app.route('/')
 def home():
-    """Home endpoint - welcome message"""
+    """Home endpoint - cyberpunk gaming vibe"""
     return jsonify({
-        'message': 'Welcome to CyberShield Backend API',
+        'banner': '⚡ WELCOME TO ARENA OF CYBERSHIELD ⚡',
+        'status': '🟢 Sẵn Sàng',
         'version': '1.0.0',
-        'status': 'running'
+        'server': '0xCyb3r-Sh13ld',
+        'message': """Chào mừng đến với Server của Cyber Shield
+Kẻ địch sẽ xuất trận sau 5 giây"""
+
     })
+
 
 @app.route('/health')
 def health_check():
-    """Health check endpoint for Render"""
     return jsonify({
-        'status': 'healthy',
+        'status': '🟢 Systems Nominal',
+        'hp': '100/100',
+        'mana': '∞',
+        'latency_ms': 5,
         'service': 'cybershield-backend',
-        'timestamp': logging.Formatter().formatTime(logging.LogRecord(
-            name='health', level=logging.INFO, pathname='', lineno=0,
-            msg='', args=(), exc_info=None
-        ))
+        'note': 'Tế đàn còn ổn'
     })
+
 
 
 
 @app.errorhandler(404)
 def not_found(error):
-    """Handle 404 errors"""
-    return jsonify({'error': 'Endpoint not found'}), 404
+    return jsonify({'error': '❌ 404: Page Not Found ://'}), 404
 
 @app.errorhandler(500)
 def internal_error(error):
-    """Handle 500 errors"""
     logger.error(f"Internal error: {str(error)}")
-    return jsonify({'error': 'Internal server error'}), 500
+    return jsonify({'error': '💥 500: Quay về phòng thủ. Tế đàn bị tấn công'}), 500
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
