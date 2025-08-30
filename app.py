@@ -26,8 +26,10 @@ def home():
         'status': '🟢 Sẵn Sàng',
         'version': '1.0.0',
         'server': '0xCyb3r-Sh13ld',
-        'message': """Chào mừng đến với Server của Cyber Shield
-Kẻ địch sẽ xuất trận sau 5 giây"""
+        'message': [
+    "Chào mừng đến với Server của Cyber Shield",
+    "Kẻ địch sẽ xuất trận sau 5 giây"]
+
 
     })
 
