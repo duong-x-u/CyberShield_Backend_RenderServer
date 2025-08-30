@@ -48,6 +48,7 @@ Nếu tin nhắn có bất kỳ dấu hiệu sau, dù không trực tiếp lừa
 - Kích động bạo lực, nổi loạn, chống phá chính quyền
 - Phát tán thông tin sai lệch gây hoang mang
 - Gây ảnh hưởng tiêu cực đến an ninh trật tự xã hội
+Nội dung có tính chất chính trị nhạy cảm, kêu gọi biểu tình, chống đối, hoặc chỉ trích chính quyền. 
 
 Trả lời dưới dạng JSON với các key:
 - "is_scam" (boolean)
