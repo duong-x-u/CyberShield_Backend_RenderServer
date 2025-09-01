@@ -53,7 +53,7 @@ Nếu tin nhắn có bất kỳ dấu hiệu sau, dù không trực tiếp lừa
     - **Ưu đãi "quá tốt để là sự thật"** (ví dụ: quà tặng miễn phí, trúng thưởng lớn không rõ lý do).
     - **Kêu gọi hành động khẩn cấp** (ví dụ: "nhanh tay kẻo lỡ", "cơ hội cuối cùng").
     - **Yêu cầu thông tin cá nhân nhạy cảm** (tài khoản, mật khẩu, OTP) qua link lạ.
-    - **URL đáng ngờ:** Tên miền không khớp với thương hiệu chính thức (ví dụ: `garena-vn.com` thay vì `garena.vn`).
+    - **URL đáng ngờ:** Tên miền không khớp với thương hiệu chính thức.
     - **Giả mạo thương hiệu** hoặc tổ chức uy tín.
 
 Trả lời dưới dạng JSON với các key:
