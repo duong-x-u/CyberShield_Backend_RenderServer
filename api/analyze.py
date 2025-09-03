@@ -39,37 +39,47 @@ if not SAFE_BROWSING_API_KEY:
 
 # --- Logic Phân tích ---
 UNIFIED_PROMPT = lambda text: f"""
-Bạn là một hệ thống phân tích an toàn thông minh, chuyên phát hiện mọi hành vi có nguy cơ lừa đảo, đe dọa, quấy rối, kích động bạo lực hoặc chống phá Nhà nước Việt Nam, gây tổn hại đến người nhận hoặc xã hội.
+Bạn là hệ thống phân tích an toàn thông minh. Nhiệm vụ: phát hiện và phân loại đa loại (multi-type) các nguy cơ trong tin nhắn.
 
-Nếu tin nhắn có bất kỳ dấu hiệu sau, dù không trực tiếp lừa đảo tài chính, hãy đánh dấu "is_scam": true để bảo vệ toàn diện:
-- Ngôn ngữ thô tục, xúc phạm cá nhân hoặc nhóm người
-- Đe dọa, ép buộc, khủng bố tinh thần
-- Kích động bạo lực, nổi loạn, chống phá chính quyền
-- Phát tán thông tin sai lệch gây hoang mang
-        - Gây ảnh hưởng tiêu cực đến an ninh trật tự xã hội
-- Nội dung có tính chất chính trị nhạy cảm, kêu gọi biểu tình, chống đối, hoặc chỉ trích chính quyền.
-- **Đặc biệt chú ý đến các dấu hiệu lừa đảo trực tuyến (phishing):**
-    - **Ưu đãi "quá tốt để là sự thật"** (ví dụ: quà tặng miễn phí, trúng thưởng lớn không rõ lý do).
-    - **Kêu gọi hành động khẩn cấp** (ví dụ: "nhanh tay kẻo lỡ", "cơ hội cuối cùng").
-    - **Yêu cầu thông tin cá nhân nhạy cảm** (tài khoản, mật khẩu, OTP) qua link lạ.
-    - **URL đáng ngờ:** Tên miền không khớp với thương hiệu chính thức.
-    - **Giả mạo thương hiệu** hoặc tổ chức uy tín.
+⚡ Khi nào flag ("is_scam": true):
+1. Lừa đảo/phishing:
+   - Ưu đãi "quá tốt để tin"
+   - Kêu gọi hành động khẩn cấp, tạo áp lực
+   - Yêu cầu cung cấp thông tin cá nhân (tài khoản, OTP, mật khẩu) qua link lạ
+   - URL/domain đáng ngờ, giả mạo thương hiệu
+2. Quấy rối/toxic:
+   - Ngôn ngữ thô tục, xúc phạm, đe dọa, khủng bố tinh thần
+3. Nội dung nhạy cảm/chính trị:
+   - Kích động bạo lực, nổi loạn, chống phá chính quyền Cộng hòa Xã hội hủ nghĩa Việt Nam hoặc Việt Nam Dân chủ Cộng hòa
+   - Có dấu hiệu lật sử
+   - Phát tán tin sai lệch gây hoang mang
+4. Khác:
+   - Spam hàng loạt, quảng cáo rác
+   - Nội dung có tính ép buộc hoặc thao túng tâm lý
 
-Trả lời dưới dạng JSON với các key:
+⚡ Safe-case (không flag):
+- Meme, châm biếm vui, không hại ai
+- Link từ domain chính thống (vd: *.gov.vn, *.google.com)
+- Thảo luận chính trị trung lập, không kêu gọi hành động
+- Thông báo dịch vụ hợp pháp, minh bạch
+- Nội dung lịch sử, trích dẫn văn học, bài hát, tài liệu giáo dục chính thống.
+
+⚡ Output JSON (ngắn gọn):
 - "is_scam" (boolean)
-- "reason" (string)
-- "types" (string)
-- "score" (number 0-5)  # 0 là không nguy hiểm, 5 là rất nguy hiểm
-- "recommend" (string)
+- "reason" (string, ≤ 2 câu, tóm rõ nhất vì sao flag/không flag)
+- "types" (string, nhiều loại cách nhau bằng dấu phẩy, ví dụ: "scam, phishing, toxic")
+- "score" (0-5)  # 0 = an toàn, 5 = rất nguy hiểm
+- "recommend" (string, hành động cụ thể: vd "xoá tin", "bỏ qua", "cảnh giác với link")
 
 Đoạn tin nhắn: {text}
 """
+
 
 async def analyze_with_gemini(text):
     try:
         selected_api_key = random.choice(GOOGLE_API_KEYS)
         genai.configure(api_key=selected_api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        model = genai.GenerativeModel('gemini-2.0-flash-latest')
         response = await model.generate_content_async(UNIFIED_PROMPT(text))
         json_text = response.text.replace('```json', '').replace('```', '').strip()
         return json.loads(json_text)
