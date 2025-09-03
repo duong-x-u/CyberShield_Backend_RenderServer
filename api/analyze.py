@@ -76,16 +76,18 @@ Bạn là hệ thống phân tích an toàn thông minh. Nhiệm vụ: phát hi�
 
 
 async def analyze_with_gemini(text):
-    try:
-        selected_api_key = random.choice(GOOGLE_API_KEYS)
-        genai.configure(api_key=selected_api_key)
-        model = genai.GenerativeModel('gemini-1.5-pro-latest')
-        response = await model.generate_content_async(UNIFIED_PROMPT(text))
-        json_text = response.text.replace('```json', '').replace('```', '').strip()
-        return json.loads(json_text)
-    except Exception as e:
-        print(f"Lỗi API Gemini: {e}")
-        return None
+    for _ in range(len(GOOGLE_API_KEYS)):  # thử hết key
+        try:
+            selected_api_key = random.choice(GOOGLE_API_KEYS)
+            genai.configure(api_key=selected_api_key)
+            model = genai.GenerativeModel("gemini-1.5-pro-latest")
+            response = await model.generate_content_async(UNIFIED_PROMPT(text))
+            json_text = response.text.replace("```json", "").replace("```", "").strip()
+            return json.loads(json_text)
+        except Exception as e:
+            print(f"Lỗi với key {selected_api_key[:12]}...: {e}")
+            continue
+    return None  # nếu key nào cũng die
 
 async def check_urls_safety(urls: list):
     if not SAFE_BROWSING_API_KEY or not urls:
