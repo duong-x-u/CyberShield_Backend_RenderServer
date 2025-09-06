@@ -42,25 +42,29 @@ UNIFIED_PROMPT = lambda text, keywords: f"""
 Bạn là một hệ thống phân tích an ninh mạng, nhiệm vụ của bạn là phân tích tin nhắn và xác định các mối nguy hiểm tiềm tàng.
 
 # HƯỚNG DẪN PHÂN TÍCH:
-1.  **Phân tích nội dung:** Đọc và hiểu đoạn tin nhắn được cung cấp.
-2.  **So sánh với từ khóa tham khảo:** Dưới đây là danh sách các từ khóa và mẫu lừa đảo đã biết. Hãy dùng chúng làm thông tin tham khảo để nâng cao khả năng phán đoán. Nhiệm vụ chính của bạn vẫn là phải tự phân tích sâu toàn bộ nội dung, ngay cả khi nó không chứa các từ khóa này.
-    - {keywords}
-3.  **Đánh giá và cho điểm:** Dựa trên phân tích, hãy xác định mức độ nguy hiểm.
+- Đọc và hiểu đoạn tin nhắn được cung cấp.
+- Dựa vào cả khả năng phân tích của bạn và các từ khóa tham khảo dưới đây, hãy xác định xem tin nhắn có phải là một "mối nguy" hay không.
+- Từ khóa tham khảo: {keywords}
+
+# ĐỊNH NGHĨA "MỐI NGUY":
+Một tin nhắn được coi là "mối nguy" và bạn PHẢI đặt `"is_scam": true` nếu nó chứa BẤT KỲ yếu tố nào sau đây:
+1.  **Lừa đảo & Phishing:** Yêu cầu thông tin cá nhân, dụ dỗ bằng phần thưởng lớn, việc nhẹ lương cao, giả mạo thương hiệu/cơ quan chức năng để lừa tiền.
+2.  **Đe dọa & Xúc phạm:** Chứa ngôn ngữ đe dọa, khủng bố tinh thần, bắt nạt, hoặc các từ ngữ thô tục, lăng mạ, xúc phạm nghiêm trọng đến người khác.
+3.  **Nội dung cực đoan:** Kích động bạo lực, chia rẽ, chống phá nhà nước, hoặc lan truyền thông tin sai sự thật có chủ đích gây hoang mang.
 
 # HƯỚM DẪN TRÍCH XUẤT TỪ KHÓA:
-- Từ "Đoạn tin nhắn" được cung cấp, nếu bạn xác định đó là lừa đảo, hãy trích xuất các cụm từ khóa ngắn (3-7 từ) mà bạn cho rằng là dấu hiệu lừa đảo và có thể tái sử dụng để nhận diện các tin nhắn tương tự trong tương lai.
-- Chỉ trích xuất những cụm từ trực tiếp có trong văn bản.
-- Nếu tin nhắn an toàn, hãy trả về một danh sách rỗng [].
+- Nếu bạn xác định tin nhắn là một "mối nguy", hãy trích xuất các cụm từ khóa ngắn (3-7 từ) đặc trưng nhất gây ra mối nguy đó.
+- Nếu tin nhắn an toàn, trả về danh sách rỗng [].
 
 # ĐỊNH DẠNG OUTPUT (JSON):
 Bạn PHẢI trả lời bằng một đối tượng JSON duy nhất có cấu trúc như sau:
 {{
-    "is_scam": (boolean, true nếu là lừa đảo, ngược lại false),
-    "reason": (string, giải thích ngắn gọn, súc tích lý do tại sao bạn đưa ra kết luận đó, <= 2 câu),
-    "types": (string, một hoặc nhiều loại lừa đảo, cách nhau bằng dấu phẩy, ví dụ: "scam, phishing, financial_fraud"),
-    "score": (integer, điểm nguy hiểm từ 0 đến 5, 0 = an toàn, 5 = rất nguy hiểm),
-    "recommend": (string, đề xuất hành động cụ thể cho người dùng, ví dụ: "Xoá tin nhắn, không cung cấp thông tin."),
-    "suggested_keywords": (list of strings, danh sách các cụm từ khóa mới bạn trích xuất được, ví dụ: ["tuyển dụng các bạn sinh viên", "đóng khoản phí 119k"])
+    "is_scam": (boolean, đặt là true nếu tin nhắn là một "mối nguy" như định nghĩa ở trên),
+    "reason": (string, giải thích ngắn gọn tại sao nó là một mối nguy, <= 2 câu),
+    "types": (string, một hoặc nhiều loại mối nguy, ví dụ: "scam, phishing", "threatening, toxic_language", "hate_speech"),
+    "score": (integer, điểm nguy hiểm từ 0 đến 5, với 0 = an toàn, 3-5 = rất nguy hiểm),
+    "recommend": (string, đề xuất hành động cụ thể cho người dùng),
+    "suggested_keywords": (list of strings, danh sách các cụm từ khóa mới bạn trích xuất được)
 }}
 
 # ĐOẠN TIN NHẮN CẦN PHÂN TÍCH:
