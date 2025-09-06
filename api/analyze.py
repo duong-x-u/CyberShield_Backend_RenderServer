@@ -110,6 +110,9 @@ async def append_keywords_to_sheet(keywords_to_add: list):
         print(f"Lỗi khi ghi vào Google Sheet: {e}")
 
 async def analyze_with_gemini(text, keywords_str):
+    if not GOOGLE_API_KEYS:
+        print("--- LỖI CẤU HÌNH: Danh sách GOOGLE_API_KEYS bị trống. Vui lòng kiểm tra biến môi trường. ---")
+        return None
     for _ in range(len(GOOGLE_API_KEYS)):
         try:
             selected_api_key = random.choice(GOOGLE_API_KEYS)
