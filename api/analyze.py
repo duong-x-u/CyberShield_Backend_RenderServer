@@ -69,7 +69,7 @@ Một tin nhắn được coi là \"mối nguy\" và bạn PHẢI đặt \"is_da
 - **Mục tiêu:** Trích xuất những cụm từ \"bằng chứng\" nguyên văn từ tin nhắn, giúp người quản lý hiểu được tại sao tin nhắn này lại nguy hiểm.
 - **Yêu cầu:**
     - Chỉ trích xuất nếu tin nhắn được xác định là nguy hiểm.
-    - Cụm từ phải có độ dài từ 3 đến 10 từ.
+    - Cụm từ phải có độ dài tối thiểu 7 từ và tối đa 20 từ (Có thể nới ra thêm nếu cần lưu thông tin về ngữ cảnh,...).
     - Cụm từ phải được lấy **nguyên văn**, không diễn giải, không tóm tắt.
 - **Ví dụ TỐT:** Nếu tin nhắn là \"Tan học đợi tao ở cổng trường nhé, mày chết chắc\", bạn có thể trích xuất `[\"đợi tao ở cổng trường\", \"mày chết chắc\"]`.
 - **Ví dụ XẤU (KHÔNG LÀM):** Không trích xuất các từ đơn lẻ, mang tính trừu tượng như `[\"đe dọa\", \"bạo lực\", \"xúc phạm\"]`.
