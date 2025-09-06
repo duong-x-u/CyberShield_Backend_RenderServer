@@ -43,28 +43,28 @@ Bạn là một hệ thống phân tích an ninh mạng, nhiệm vụ của bạ
 
 # HƯỚNG DẪN PHÂN TÍCH:
 - Đọc và hiểu đoạn tin nhắn được cung cấp.
-- Dựa vào cả khả năng phân tích của bạn và các từ khóa tham khảo dưới đây, hãy xác định xem tin nhắn có phải là một "mối nguy" hay không.
+- Dựa vào cả khả năng phân tích của bạn và các từ khóa tham khảo dưới đây, hãy xác định xem tin nhắn có phải là một \"mối nguy\" hay không.
 - Từ khóa tham khảo: {keywords}
 
-# ĐỊNH NGHĨA "MỐI NGUY":
-Một tin nhắn được coi là "mối nguy" và bạn PHẢI đặt `"is_scam": true` nếu nó chứa BẤT KỲ yếu tố nào sau đây:
+# ĐỊNH NGHĨA \"MỐI NGUY\":
+Một tin nhắn được coi là \"mối nguy\" và bạn PHẢI đặt \"is_dangerous\": true nếu nó chứa BẤT KỲ yếu tố nào sau đây:
 1.  **Lừa đảo & Phishing:** Yêu cầu thông tin cá nhân, dụ dỗ bằng phần thưởng lớn, việc nhẹ lương cao, giả mạo thương hiệu/cơ quan chức năng để lừa tiền.
 2.  **Đe dọa & Xúc phạm:** Chứa ngôn ngữ đe dọa, khủng bố tinh thần, bắt nạt, hoặc các từ ngữ thô tục, lăng mạ, xúc phạm nghiêm trọng đến người khác.
 3.  **Nội dung cực đoan:** Kích động bạo lực, chia rẽ, chống phá nhà nước, hoặc lan truyền thông tin sai sự thật có chủ đích gây hoang mang.
 
 # HƯỚM DẪN TRÍCH XUẤT TỪ KHÓA:
-- Nếu bạn xác định tin nhắn là một "mối nguy", hãy trích xuất các cụm từ khóa ngắn (3-7 từ) đặc trưng nhất gây ra mối nguy đó.
+- Nếu bạn xác định tin nhắn là một \"mối nguy\", hãy trích xuất các cụm từ khóa ngắn (3-7 từ) đặc trưng nhất gây ra mối nguy đó.
 - Nếu tin nhắn an toàn, trả về danh sách rỗng [].
 
 # ĐỊNH DẠNG OUTPUT (JSON):
 Bạn PHẢI trả lời bằng một đối tượng JSON duy nhất có cấu trúc như sau:
 {{
-    "is_scam": (boolean, đặt là true nếu tin nhắn là một "mối nguy" như định nghĩa ở trên),
-    "reason": (string, giải thích ngắn gọn tại sao nó là một mối nguy, <= 2 câu),
-    "types": (string, một hoặc nhiều loại mối nguy, ví dụ: "scam, phishing", "threatening, toxic_language", "hate_speech"),
-    "score": (integer, điểm nguy hiểm từ 0 đến 5, với 0 = an toàn, 3-5 = rất nguy hiểm),
-    "recommend": (string, đề xuất hành động cụ thể cho người dùng),
-    "suggested_keywords": (list of strings, danh sách các cụm từ khóa mới bạn trích xuất được)
+    \"is_dangerous\": (boolean, đặt là true nếu tin nhắn là một \"mối nguy\" như định nghĩa ở trên),
+    \"reason\": (string, giải thích ngắn gọn tại sao nó là một mối nguy, <= 2 câu),
+    \"types\": (string, một hoặc nhiều loại mối nguy, ví dụ: \"scam, phishing\", \"threatening, toxic_language\", \"hate_speech\"),
+    \"score\": (integer, điểm nguy hiểm từ 0 đến 5, với 0 = an toàn, 3-5 = rất nguy hiểm),
+    \"recommend\": (string, đề xuất hành động cụ thể cho người dùng),
+    \"suggested_keywords\": (list of strings, danh sách các cụm từ khóa mới bạn trích xuất được)
 }}
 
 # ĐOẠN TIN NHẮN CẦN PHÂN TÍCH:
