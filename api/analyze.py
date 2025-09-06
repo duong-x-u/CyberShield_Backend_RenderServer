@@ -152,6 +152,7 @@ async def check_urls_safety(urls: list):
 
 async def perform_full_analysis(text, urls):
     print("DEBUG: === BẮT ĐẦU perform_full_analysis ===")
+    print(f"DEBUG: Nội dung gửi đến AI: {text}") # Dòng log mới
     try:
         # 1. Đọc các từ khóa hiện có
         print("DEBUG: Bước 1: Chuẩn bị gọi fetch_keywords_from_sheet...")
@@ -173,6 +174,7 @@ async def perform_full_analysis(text, urls):
         print("DEBUG: Bước 2d: Chuẩn bị gọi asyncio.gather...")
         gemini_result, url_matches = await asyncio.gather(gemini_task, urls_task)
         print("DEBUG: Bước 2e: Đã gọi xong asyncio.gather.")
+        print(f"DEBUG: Kết quả JSON thô từ AI: {gemini_result}") # Dòng log mới
 
         if not gemini_result:
             print("DEBUG: Lỗi - gemini_result rỗng. Trả về lỗi.")
@@ -218,6 +220,7 @@ async def perform_full_analysis(text, urls):
         import traceback
         print(traceback.format_exc())
         raise
+
 
 @analyze_endpoint.route('/analyze', methods=['POST'])
 def analyze_text():
