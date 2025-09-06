@@ -151,42 +151,73 @@ async def check_urls_safety(urls: list):
         return []
 
 async def perform_full_analysis(text, urls):
-    # 1. Đọc các từ khóa hiện có
-    existing_keywords_list = await fetch_keywords_from_sheet()
-    existing_keywords_str_for_prompt = "\n- ".join(existing_keywords_list)
+    print("DEBUG: === BẮT ĐẦU perform_full_analysis ===")
+    try:
+        # 1. Đọc các từ khóa hiện có
+        print("DEBUG: Bước 1: Chuẩn bị gọi fetch_keywords_from_sheet...")
+        existing_keywords_list = await fetch_keywords_from_sheet()
+        print(f"DEBUG: Bước 1a: Đã gọi xong fetch_keywords_from_sheet. {len(existing_keywords_list)} từ khóa được trả về.")
 
-    # 2. Chạy song song việc phân tích của Gemini và kiểm tra URL
-    gemini_task = analyze_with_gemini(text, existing_keywords_str_for_prompt)
-    urls_task = check_urls_safety(urls)
-    gemini_result, url_matches = await asyncio.gather(gemini_task, urls_task)
+        existing_keywords_str_for_prompt = "\n- ".join(existing_keywords_list)
+        print("DEBUG: Bước 1b: Đã nối chuỗi từ khóa cho prompt.")
 
-    if not gemini_result:
-        return {'error': 'Phân tích với Gemini thất bại', 'status_code': 500}
+        # 2. Chạy song song việc phân tích của Gemini và kiểm tra URL
+        print("DEBUG: Bước 2: Chuẩn bị tạo gemini_task...")
+        gemini_task = analyze_with_gemini(text, existing_keywords_str_for_prompt)
+        print("DEBUG: Bước 2a: Đã tạo gemini_task.")
 
-    # 3. Xử lý và ghi các từ khóa mới (không cần chờ)
-    suggested_keywords = gemini_result.get('suggested_keywords', [])
-    if suggested_keywords:
-        existing_keywords_set = {kw.strip().lower() for kw in existing_keywords_list}
-        unique_new_keywords = []
-        for kw in suggested_keywords:
-            if kw.strip().lower() not in existing_keywords_set:
-                unique_new_keywords.append(kw.strip())
-                existing_keywords_set.add(kw.strip().lower())
+        print("DEBUG: Bước 2b: Chuẩn bị tạo urls_task...")
+        urls_task = check_urls_safety(urls)
+        print("DEBUG: Bước 2c: Đã tạo urls_task.")
+
+        print("DEBUG: Bước 2d: Chuẩn bị gọi asyncio.gather...")
+        gemini_result, url_matches = await asyncio.gather(gemini_task, urls_task)
+        print("DEBUG: Bước 2e: Đã gọi xong asyncio.gather.")
+
+        if not gemini_result:
+            print("DEBUG: Lỗi - gemini_result rỗng. Trả về lỗi.")
+            return {'error': 'Phân tích với Gemini thất bại', 'status_code': 500}
         
-        if unique_new_keywords:
-            asyncio.create_task(append_keywords_to_sheet(unique_new_keywords))
+        print("DEBUG: Bước 3: Bắt đầu xử lý từ khóa đề xuất...")
+        # 3. Xử lý và ghi các từ khóa mới (không cần chờ)
+        suggested_keywords = gemini_result.get('suggested_keywords', [])
+        if suggested_keywords:
+            print(f"DEBUG: AI đề xuất {len(suggested_keywords)} từ khóa.")
+            existing_keywords_set = {kw.strip().lower() for kw in existing_keywords_list}
+            
+            unique_new_keywords = []
+            for kw in suggested_keywords:
+                if kw.strip().lower() not in existing_keywords_set:
+                    unique_new_keywords.append(kw.strip())
+                    existing_keywords_set.add(kw.strip().lower())
+            
+            if unique_new_keywords:
+                print(f"DEBUG: Tìm thấy {len(unique_new_keywords)} từ khóa mới. Chuẩn bị ghi vào sheet...")
+                asyncio.create_task(append_keywords_to_sheet(unique_new_keywords))
+            else:
+                print("DEBUG: Không có từ khóa mới nào để ghi.")
+        else:
+            print("DEBUG: AI không đề xuất từ khóa nào.")
 
-    # 4. Chuẩn bị kết quả cuối cùng để gửi về cho người dùng
-    gemini_result.pop('suggested_keywords', None) # Xóa trường này khỏi kết quả trả về
-    final_result = gemini_result
-    final_result['url_analysis'] = url_matches
+        # 4. Chuẩn bị kết quả cuối cùng để gửi về cho người dùng
+        print("DEBUG: Bước 4: Chuẩn bị kết quả cuối cùng...")
+        gemini_result.pop('suggested_keywords', None)
+        final_result = gemini_result
+        final_result['url_analysis'] = url_matches
 
-    if url_matches:
-        final_result['is_scam'] = True
-        final_result['reason'] += " Ngoài ra, một hoặc nhiều URL trong tin nhắn được xác định là không an toàn."
-        final_result['score'] = max(final_result.get('score', 0), 4)
+        if url_matches:
+            print("DEBUG: Có URL độc hại, cập nhật kết quả cuối cùng.")
+            final_result['is_scam'] = True
+            final_result['reason'] += " Ngoài ra, một hoặc nhiều URL trong tin nhắn được xác định là không an toàn."
+            final_result['score'] = max(final_result.get('score', 0), 4)
 
-    return final_result
+        print("DEBUG: === KẾT THÚC perform_full_analysis thành công ===")
+        return final_result
+    except Exception as e:
+        print(f"--- LỖI KHÔNG XÁC ĐỊNH BÊN TRONG perform_full_analysis: {e} ---")
+        import traceback
+        print(traceback.format_exc())
+        raise
 
 @analyze_endpoint.route('/analyze', methods=['POST'])
 def analyze_text():
