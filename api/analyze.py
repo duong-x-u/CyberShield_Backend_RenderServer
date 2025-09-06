@@ -137,7 +137,7 @@ async def analyze_with_gemini(text, keywords):
         try:
             selected_api_key = random.choice(GOOGLE_API_KEYS)
             genai.configure(api_key=selected_api_key)
-            model = genai.GenerativeModel("gemini-1.5-pro-latest")
+            model = genai.GenerativeModel("gemini-1.5-flash-latest")
             prompt = UNIFIED_PROMPT(text, keywords)
             response = await model.generate_content_async(prompt)
             json_text = response.text.replace("```json", "").replace("```", "").strip()
