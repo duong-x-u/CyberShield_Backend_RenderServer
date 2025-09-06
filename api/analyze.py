@@ -213,7 +213,7 @@ async def perform_full_analysis(text, urls):
 
         if url_matches:
             print("DEBUG: Có URL độc hại, cập nhật kết quả cuối cùng.")
-            final_result['is_scam'] = True
+            final_result['is_dangerous'] = True
             final_result['reason'] += " Ngoài ra, một hoặc nhiều URL trong tin nhắn được xác định là không an toàn."
             final_result['score'] = max(final_result.get('score', 0), 4)
 
