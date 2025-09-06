@@ -85,31 +85,51 @@ Bạn là hệ thống phân tích an toàn thông minh. Nhiệm vụ: phát hi�
 
 async def fetch_keywords_from_sheet():
     """Lấy danh sách từ khóa từ Google Sheet một cách tự động qua biến môi trường."""
+    print("--- BẮT ĐẦU QUÁ TRÌNH LẤY KEYWORD TỪ GOOGLE SHEET ---")
     if not GOOGLE_SHEET_ID or not GOOGLE_SHEET_RANGE:
-        print("Cảnh báo: GOOGLE_SHEET_ID hoặc GOOGLE_SHEET_RANGE chưa được thiết lập. Bỏ qua việc lấy keyword.")
+        print("DEBUG: GOOGLE_SHEET_ID hoặc GOOGLE_SHEET_RANGE chưa được thiết lập. Bỏ qua.")
         return ""
+    
+    # Kiểm tra biến môi trường GOOGLE_APPLICATION_CREDENTIALS
+    creds_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+    if not creds_path:
+        print("DEBUG: Biến môi trường GOOGLE_APPLICATION_CREDENTIALS không tồn tại.")
+        return ""
+    print(f"DEBUG: Biến môi trường GOOGLE_APPLICATION_CREDENTIALS được đặt thành: {creds_path}")
+
     try:
+        print("DEBUG: Bắt đầu quá trình xác thực với google.auth.default()...")
         # Tự động tìm credentials từ biến môi trường GOOGLE_APPLICATION_CREDENTIALS
-        creds, _ = google.auth.default(scopes=SCOPES)
+        creds, project_id = google.auth.default(scopes=SCOPES)
         
+        print(f"DEBUG: Xác thực thành công! Project ID: {project_id}, Loại Credentials: {type(creds)}")
+        if hasattr(creds, 'service_account_email'):
+            print(f"DEBUG: Service Account Email: {creds.service_account_email}")
+
         loop = asyncio.get_running_loop()
         service = await loop.run_in_executor(None, lambda: build('sheets', 'v4', credentials=creds))
-        
+        print("DEBUG: Đã tạo service object của Google Sheets API thành công.")
+
         sheet = service.spreadsheets()
         result = await loop.run_in_executor(None, lambda: sheet.values().get(spreadsheetId=GOOGLE_SHEET_ID, range=GOOGLE_SHEET_RANGE).execute())
+        print("DEBUG: Đã gọi API và nhận được kết quả từ Google Sheet.")
         
         values = result.get('values', [])
 
         if not values:
-            print("Không tìm thấy từ khóa nào trong Google Sheet.")
+            print("DEBUG: Không tìm thấy từ khóa nào trong Google Sheet.")
             return ""
         else:
             keywords = "\n- ".join([item for sublist in values for item in sublist if item])
-            print(f"Đã lấy thành công {len(values)} từ khóa từ Google Sheet.")
+            print(f"DEBUG: Đã lấy và xử lý thành công {len(values)} từ khóa.")
             return keywords
     except Exception as e:
-        print(f"Lỗi khi lấy dữ liệu từ Google Sheet: {e}")
+        print(f"--- LỖI NGHIÊM TRỌNG KHI LẤY DỮ LIỆU TỪ GOOGLE SHEET ---")
+        import traceback
+        print(traceback.format_exc())
+        print(f"--- KẾT THÚC LỖI ---")
         return ""
+
 
 async def analyze_with_gemini(text, keywords):
     """Phân tích văn bản với Gemini, sử dụng các từ khóa được cung cấp."""
@@ -117,7 +137,7 @@ async def analyze_with_gemini(text, keywords):
         try:
             selected_api_key = random.choice(GOOGLE_API_KEYS)
             genai.configure(api_key=selected_api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash-latest")
+            model = genai.GenerativeModel("gemini-1.5-pro-latest")
             prompt = UNIFIED_PROMPT(text, keywords)
             response = await model.generate_content_async(prompt)
             json_text = response.text.replace("```json", "").replace("```", "").strip()
