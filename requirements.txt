@@ -1,7 +1,9 @@
-aiohttp==3.9.5
-flask[async]==2.3.3
-flask-cors==4.0.0
-gunicorn==21.2.0
-google-generativeai==0.7.1
-python-dotenv==1.0.0
-redis==5.0.4
+aiohttp==3.9.5                # HTTP requests async
+flask[async]==2.3.3           # Flask async support
+flask-cors==4.0.0             # Nếu cần CORS
+gunicorn==21.2.0              # Production server
+google-generativeai==0.7.1    # Gemini AI
+python-dotenv==1.0.0          # Load ENV từ .env
+google-api-python-client==2.95.0  # Google Sheets API
+google-auth==2.22.0           # Credentials cho Sheets
+python-telegram-bot==23.19.1  # Telegram bot (lazy import vẫn dùng)
