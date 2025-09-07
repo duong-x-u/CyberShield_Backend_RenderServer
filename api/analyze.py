@@ -3,390 +3,474 @@ import asyncio
 import os
 import random
 import time
+import gc  # Garbage collector
 from flask import Blueprint, request, jsonify
-import google.generativeai as genai
-import google.auth
-from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
-from email.mime.text import MIMEText
-import base64
 import aiohttp
-from sentence_transformers import SentenceTransformer
-from scipy.spatial.distance import cosine
+import hashlib
+from functools import lru_cache
 
-# Khởi tạo Blueprint
+# Lazy imports để giảm memory footprint ban đầu
+def lazy_import_genai():
+    import google.generativeai as genai
+    return genai
+
+def lazy_import_google_services():
+    import google.auth
+    from googleapiclient.discovery import build
+    return google.auth, build
+
+def lazy_import_email():
+    from email.mime.text import MIMEText
+    import base64
+    return MIMEText, base64
+
+# Blueprint
 analyze_endpoint = Blueprint('analyze_endpoint', __name__)
 
-# --- Cấu hình Google APIs ---
+# --- Cấu hình tối ưu cho Render Free ---
 GOOGLE_API_KEYS_STR = os.environ.get('GOOGLE_API_KEYS')
 SAFE_BROWSING_API_KEY = os.environ.get('SAFE_BROWSING_API_KEY')
 GOOGLE_SHEET_ID = os.environ.get('GOOGLE_SHEET_ID')
-GOOGLE_SHEET_RANGE = os.environ.get('GOOGLE_SHEET_RANGE', 'Sheet1!A2:F') # Updated range to include all columns
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/gmail.send'] # Added gmail.send scope
+GOOGLE_SHEET_RANGE = os.environ.get('GOOGLE_SHEET_RANGE', 'Sheet1!A2:F')
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/gmail.send']
 
 if not GOOGLE_API_KEYS_STR:
     raise ValueError("Biến môi trường GOOGLE_API_KEYS là bắt buộc.")
 GOOGLE_API_KEYS = [key.strip() for key in GOOGLE_API_KEYS_STR.split(',') if key.strip()]
 
-# --- Cache và các biến toàn cục ---
+# --- Cache tối ưu với giới hạn memory ---
 g_sheets_service = None
-g_cached_sheet_data = [] # To store full sheet data (text, is_dangerous, types, reason, score, recommend)
+g_cached_sheet_data = []
 g_sheet_data_last_fetched = 0
-g_embedding_model = None # Sentence Transformer model
-CACHE_DURATION_SECONDS = 600 # Cache data trong 10 phút
-SEMANTIC_SIMILARITY_THRESHOLD = 0.8 # Ngưỡng độ tương đồng ngữ nghĩa
-EMAIL_RECIPIENTS = os.environ.get('EMAIL_RECIPIENTS', 'quoctrieu581@gmail.com,duongpham18210@gmail.com').split(',')
-SERVICE_ACCOUNT_EMAIL = os.environ.get('SERVICE_ACCOUNT_EMAIL', 'cyber-shield-server@fluent-plate-465614-b0.iam.gserviceaccount.com')
-TOKEN_PATH = 'token.json' # Path to store the service account token
+CACHE_DURATION_SECONDS = 900  # Tăng cache time để giảm API calls
+MAX_CACHE_SIZE = 100  # Giới hạn số lượng records
+EMAIL_RECIPIENTS = os.environ.get('EMAIL_RECIPIENTS', 'quoctrieu581 @gmail.com,duongpham18210 @gmail.com').split(',')
+SERVICE_ACCOUNT_EMAIL = os.environ.get('SERVICE_ACCOUNT_EMAIL', 'cyber-shield-server @fluent-plate-465614-b0.iam.gserviceaccount.com')
 
-# Khởi tạo Blueprint
-analyze_endpoint = Blueprint('analyze_endpoint', __name__)
-
-# --- Cấu hình Google APIs ---
-GOOGLE_API_KEYS_STR = os.environ.get('GOOGLE_API_KEYS')
-SAFE_BROWSING_API_KEY = os.environ.get('SAFE_BROWSING_API_KEY')
-GOOGLE_SHEET_ID = os.environ.get('GOOGLE_SHEET_ID')
-GOOGLE_SHEET_RANGE = os.environ.get('GOOGLE_SHEET_RANGE', 'Sheet1!A2:A')
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-
-if not GOOGLE_API_KEYS_STR:
-    raise ValueError("Biến môi trường GOOGLE_API_KEYS là bắt buộc.")
-GOOGLE_API_KEYS = [key.strip() for key in GOOGLE_API_KEYS_STR.split(',') if key.strip()]
-
-# --- Cache và các biến toàn cục ---
-g_sheets_service = None
-g_cached_keywords = None
-g_keywords_last_fetched = 0
-CACHE_DURATION_SECONDS = 600 # Cache từ khóa trong 10 phút
+# --- Memory-efficient text similarity ---
+@lru_cache(maxsize=50)  # Cache kết quả similarity
+def simple_text_similarity(text1: str, text2: str) -> float:
+    """
+    Thay thế SentenceTransformer bằng similarity đơn giản nhưng hiệu quả
+    """
+    text1_lower = text1.lower().strip()
+    text2_lower = text2.lower().strip()
+    
+    # Exact match
+    if text1_lower == text2_lower:
+        return 1.0
+    
+    # Substring match
+    if text1_lower in text2_lower or text2_lower in text1_lower:
+        return 0.8
+    
+    # Word-based Jaccard similarity
+    words1 = set(text1_lower.split())
+    words2 = set(text2_lower.split())
+    
+    if not words1 or not words2:
+        return 0.0
+    
+    intersection = len(words1.intersection(words2))
+    union = len(words1.union(words2))
+    
+    return intersection / union if union > 0 else 0.0
 
 async def get_sheets_service():
-    """Tạo hoặc trả về service object đã được cache của Google Sheets."""
+    """Tạo service với connection pooling tối ưu"""
     global g_sheets_service
     if g_sheets_service:
         return g_sheets_service
+    
     try:
-        # Use service account for authentication
-        creds, project_id = google.auth.default(scopes=SCOPES)
+        google_auth, build_func = lazy_import_google_services()
+        creds, _ = google_auth.default(scopes=SCOPES)
+        
+        # Tạo service trong executor để không block
         loop = asyncio.get_running_loop()
-        g_sheets_service = await loop.run_in_executor(None, lambda: build('sheets', 'v4', credentials=creds))
-        print("DEBUG: Đã tạo và cache service object của Google Sheets.")
+        g_sheets_service = await loop.run_in_executor(
+            None, 
+            lambda: build_func('sheets', 'v4', credentials=creds, cache_discovery=False)
+        )
+        print("DEBUG: Google Sheets service created")
         return g_sheets_service
     except Exception as e:
-        print(f"Lỗi nghiêm trọng khi tạo Google Sheets service: {e}")
+        print(f"ERROR: Failed to create Sheets service: {e}")
         return None
 
 async def get_gmail_service():
-    """Tạo hoặc trả về service object đã được cache của Gmail."""
+    """Tạo Gmail service khi cần thiết"""
     try:
-        creds, project_id = google.auth.default(scopes=SCOPES)
+        google_auth, build_func = lazy_import_google_services()
+        creds, _ = google_auth.default(scopes=SCOPES)
+        
         if creds and creds.valid:
-            return build('gmail', 'v1', credentials=creds)
-        else:
-            print("DEBUG: Không thể lấy thông tin xác thực hợp lệ cho Gmail service.")
-            return None
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(
+                None,
+                lambda: build_func('gmail', 'v1', credentials=creds, cache_discovery=False)
+            )
+        return None
     except Exception as e:
-        print(f"Lỗi nghiêm trọng khi tạo Gmail service: {e}")
+        print(f"ERROR: Failed to create Gmail service: {e}")
         return None
 
-def load_embedding_model():
-    """Tải mô hình SentenceTransformer."""
-    global g_embedding_model
-    if g_embedding_model is None:
-        print("DEBUG: Đang tải mô hình SentenceTransformer...")
-        hf_token = os.environ.get('HUGGINGFACE_API_KEY')
-        g_embedding_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2', use_auth_token=hf_token)
-        print("DEBUG: Đã tải mô hình SentenceTransformer.")
-    return g_embedding_model
+# --- Optimized prompt with memory-conscious structure ---
+def create_analysis_prompt(text: str, keywords: str) -> str:
+    """Tạo prompt tối ưu với kích thước nhỏ hơn"""
+    return f"""Bạn là CyberShield Guardian, chuyên gia phân tích an ninh tin nhắn.
 
-# --- Prompt "2.5 Pro" cho AI ---
-UNIFIED_PROMPT = lambda text, keywords: f"""<ROLE>
-Bạn là \"CyberShield Guardian\", một chuyên gia phân tích an ninh và ngôn ngữ cấp cao. Nhiệm vụ của bạn là đánh giá các đoạn tin nhắn và xác định các mối nguy hiểm tiềm tàng với độ chính xác tuyệt đối. Hãy hành động một cách logic, có phương pháp, và tuân thủ nghiêm ngặt các hướng dẫn dưới đây.
-</ROLE>
+NHIỆM VỤ: Phân tích tin nhắn và xác định mối nguy hiểm.
 
-<THINKING_PROCESS>
-Trước khi đưa ra kết quả JSON cuối cùng, hãy thực hiện các bước suy luận sau trong đầu (không cần in ra):
-1.  **Phân tích ngữ nghĩa:** Đọc kỹ đoạn tin nhắn. Xác định chủ đề, giọng văn (nghiêm túc, đùa cợt, giận dữ), và mục đích của người gửi.
-2.  **Đối chiếu định nghĩa \"Mối Nguy\":** So sánh nội dung tin nhắn với từng loại \"Mối Nguy\" được định nghĩa trong <INSTRUCTIONS>. Tin nhắn có dấu hiệu lừa đảo không? Có chứa lời đe dọa không? Có ngôn ngữ xúc phạm không?
-3.  **Đối chiếu từ khóa tham khảo:** Rà soát các từ khóa tham khảo được cung cấp. Việc một từ khóa xuất hiện không có nghĩa tin nhắn đó chắc chắn nguy hiểm, nhưng nó là một tín hiệu cần xem xét cẩn thận.
-4.  **Tổng hợp và quyết định:** Dựa trên tất cả các phân tích trên, đưa ra quyết định cuối cùng về `is_dangerous`, `types`, `score`, và `reason`.
-5.  **Trích xuất bằng chứng:** Nếu quyết định là nguy hiểm, quay lại đoạn tin nhắn và trích xuất những cụm từ nguyên văn, không diễn giải, làm bằng chứng.
-</THINKING_PROCESS>
+MỐI NGUY bao gồm:
+1. Lừa đảo: Yêu cầu thông tin cá nhân, phần thưởng giả, việc nhẹ lương cao
+2. Đe dọa: Ngôn ngữ đe dọa, bắt nạt, từ ngữ thô tục
+3. Cực đoan: Kích động bạo lực, thông tin sai lệch
 
-<INSTRUCTIONS>
-# ĐỊNH NGHĨA \"MỐI NGUY\"
-Một tin nhắn được coi là \"mối nguy\" và bạn PHẢI đặt \"is_dangerous\": true nếu nó chứa BẤT KỲ yếu tố nào sau đây:
-1.  **Lừa đảo & Phishing:** Yêu cầu thông tin cá nhân, dụ dỗ bằng phần thưởng lớn, việc nhẹ lương cao, giả mạo thương hiệu/cơ quan chức năng để lừa tiền.
-2.  **Đe dọa & Xúc phạm:** Chứa ngôn ngữ đe dọa, khủng bố tinh thần, bắt nạt, hoặc các từ ngữ thô tục, lăng mạ, xúc phạm nghiêm trọng đến người khác.
-3.  **Nội dung cực đoan:** Kích động bạo lực, chia rẽ, chống phá nhà nước, hoặc lan truyền thông tin sai sự thật có chủ đích gây hoang mang.
+TỪ KHÓA THAM KHẢO:
+{keywords[:500]}...
 
-# HƯỚNG DẪN TRÍCH XUẤT TỪ KHÓA:
-- **Mục tiêu:** Trích xuất những cụm từ \"bằng chứng\" nguyên văn từ tin nhắn, giúp người quản lý hiểu được tại sao tin nhắn này lại nguy hiểm.
-- **Yêu cầu:**
-    - Chỉ trích xuất nếu tin nhắn được xác định là nguy hiểm.
-    - Cụm từ phải có độ dài tối thiểu 5 từ và tối đa 20 từ.
-    - Cụm từ phải được lấy **nguyên văn**, không diễn giải, không tóm tắt.
-- **Ví dụ TỐT:** Nếu tin nhắn là \"Tan học đợi tao ở cổng trường nhé, mày chết chắc\", bạn có thể trích xuất `[\"đợi tao ở cổng trường\", \"mày chết chắc\"]`.
-- **Ví dụ XẤU (KHÔNG LÀM):** Không trích xuất các từ đơn lẻ, mang tính trừu tượng như `[\"đe dọa\", \"bạo lực\", \"xúc phạm\"]`.
-- Nếu tin nhắn an toàn, trả về danh sách rỗng `[]`.
+PHÂN TÍCH: {text}
 
-# TỪ KHÓA THAM KHẢO
-Dưới đây là các từ khóa do cộng đồng cung cấp để bạn tham khảo:
-{keywords}
-</INSTRUCTIONS>
+Trả về JSON:
+{{
+    "is_dangerous": boolean,
+    "reason": "string (max 100 chars)",
+    "types": "string",
+    "score": integer (0-5),
+    "recommend": "string",
+    "suggested_keywords": []
+}} """
 
-<OUTPUT_FORMAT>
-Bạn PHẢI trả lời bằng một đối tượng JSON duy nhất, không có bất kỳ giải thích nào bên ngoài. Cấu trúc JSON phải như sau:
-{{{{
-    \"is_dangerous\": (boolean),
-    \"reason\": (string, \"<={{ 2 }}> câu\"),
-    \"types\": (string),
-    \"score\": (integer, 0-5),
-    \"recommend\": (string),
-    \"suggested_keywords\": (list of strings)
-}}}}
-</OUTPUT_FORMAT>
-
-<TEXT_TO_ANALYZE>
-{text}
-</TEXT_TO_ANALYZE>
-"""
-
-async def fetch_sheet_data_and_embed():
-    """Lấy toàn bộ dữ liệu từ Google Sheet, tạo embeddings và cache."""
+async def fetch_sheet_data_optimized():
+    """Fetch data với memory optimization"""
     global g_cached_sheet_data, g_sheet_data_last_fetched
+    
     current_time = time.time()
-    if g_cached_sheet_data and (current_time - g_sheet_data_last_fetched < CACHE_DURATION_SECONDS):
-        print("DEBUG: Trả về dữ liệu sheet từ cache.")
+    if (g_cached_sheet_data and 
+        (current_time - g_sheet_data_last_fetched < CACHE_DURATION_SECONDS)):
+        print("DEBUG: Using cached sheet data")
         return g_cached_sheet_data
 
-    print("DEBUG: Cache dữ liệu sheet hết hạn hoặc trống. Fetching mới từ Google Sheet...")
     service = await get_sheets_service()
     if not service or not GOOGLE_SHEET_ID:
-        print("ERROR: Không thể lấy service hoặc GOOGLE_SHEET_ID.")
         return []
 
     try:
-        sheet = service.spreadsheets()
-        result = await asyncio.get_running_loop().run_in_executor(None, lambda: sheet.values().get(spreadsheetId=GOOGLE_SHEET_ID, range=GOOGLE_SHEET_RANGE).execute())
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: service.spreadsheets().values().get(
+                spreadsheetId=GOOGLE_SHEET_ID,
+                range=GOOGLE_SHEET_RANGE
+            ).execute()
+        )
+        
         values = result.get('values', [])
-
         if not values:
-            print("DEBUG: Không có dữ liệu trong Google Sheet.")
-            g_cached_sheet_data = []
-            g_sheet_data_last_fetched = current_time
             return []
 
-        # Load embedding model
-        model = load_embedding_model()
-
+        # Process với memory limit
         processed_data = []
-        for row in values:
-            if len(row) >= 6: # Ensure row has enough columns
-                text = row[0]
-                is_dangerous = row[1].lower() == 'true'
-                types = row[2]
-                reason = row[3]
-                score = int(row[4]) if row[4].isdigit() else 0
-                recommend = row[5]
-                
-                embedding = model.encode(text).tolist() # Convert to list for JSON serialization
+        for i, row in enumerate(values[:MAX_CACHE_SIZE]):  # Limit số records
+            if len(row) >= 6:
                 processed_data.append({
-                    'text': text,
-                    'is_dangerous': is_dangerous,
-                    'types': types,
-                    'reason': reason,
-                    'score': score,
-                    'recommend': recommend,
-                    'embedding': embedding
+                    'text': row[0][:200],  # Truncate text để tiết kiệm memory
+                    'is_dangerous': row[1].lower() == 'true',
+                    'types': row[2],
+                    'reason': row[3][:100],  # Limit reason length
+                    'score': int(row[4]) if row[4].isdigit() else 0,
+                    'recommend': row[5][:100]  # Limit recommend length
                 })
-            else:
-                print(f"WARNING: Hàng không đủ cột, bỏ qua: {row}")
 
         g_cached_sheet_data = processed_data
         g_sheet_data_last_fetched = current_time
-        print(f"DEBUG: Đã cache {len(processed_data)} hàng dữ liệu từ sheet.")
+        
+        # Force garbage collection
+        gc.collect()
+        
+        print(f"DEBUG: Cached {len(processed_data)} records")
         return processed_data
+        
     except Exception as e:
-        print(f"Lỗi khi đọc hoặc xử lý dữ liệu từ Google Sheet: {e}")
+        print(f"ERROR: Failed to fetch sheet data: {e}")
         return []
 
-async def perform_semantic_search(input_text):
-    """Thực hiện tìm kiếm ngữ nghĩa trong dữ liệu đã cache."""
-    cached_data = await fetch_sheet_data_and_embed()
-    if not cached_data: return None
-
-    model = load_embedding_model()
-    input_embedding = model.encode(input_text).tolist()
+async def perform_lightweight_search(input_text: str):
+    """Tìm kiếm với thuật toán nhẹ thay thế SentenceTransformer"""
+    cached_data = await fetch_sheet_data_optimized()
+    if not cached_data:
+        return None
 
     best_match = None
-    highest_similarity = -1
+    highest_similarity = 0
+    similarity_threshold = 0.7  # Lowered threshold
 
     for item in cached_data:
-        sheet_embedding = item['embedding']
-        similarity = 1 - cosine(input_embedding, sheet_embedding)
+        similarity = simple_text_similarity(input_text, item['text'])
         
         if similarity > highest_similarity:
             highest_similarity = similarity
             best_match = item
 
-    if best_match and highest_similarity >= SEMANTIC_SIMILARITY_THRESHOLD:
-        print(f"DEBUG: Tìm thấy match ngữ nghĩa với độ tương đồng: {highest_similarity:.4f}")
-        # Return the relevant fields, excluding the embedding
+    if best_match and highest_similarity >= similarity_threshold:
+        print(f"DEBUG: Found match with similarity: {highest_similarity:.3f}")
         return {
             'is_dangerous': best_match['is_dangerous'],
             'reason': best_match['reason'],
             'types': best_match['types'],
             'score': best_match['score'],
             'recommend': best_match['recommend'],
-            'suggested_keywords': [] # No new keywords from cached data
+            'suggested_keywords': []
         }
-    print(f"DEBUG: Không tìm thấy match ngữ nghĩa. Độ tương đồng cao nhất: {highest_similarity:.4f}")
+    
     return None
 
-async def append_keywords_to_sheet(keywords_to_add: list):
-    if not keywords_to_add: return
-    service = await get_sheets_service()
-    if not service: return
-    try:
-        values_to_append = [[kw] for kw in keywords_to_add]
-        body = {'values': values_to_append}
-        result = await asyncio.get_running_loop().run_in_executor(None, lambda: 
-            service.spreadsheets().values().append(spreadsheetId=GOOGLE_SHEET_ID, range=GOOGLE_SHEET_RANGE, valueInputOption='USER_ENTERED', body=body).execute())
-        print(f"DEBUG: Ghi thành công {result.get('updates',{}).get('updatedCells')} ô.")
-    except Exception as e:
-        print(f"Lỗi khi ghi vào Google Sheet: {e}")
-
-async def send_analysis_email(original_text, analysis_result):
-    """Gửi email chứa văn bản gốc và kết quả phân tích."""
-    service = await get_gmail_service()
-    if not service:
-        print("ERROR: Không thể gửi email, không có Gmail service.")
-        return
-
-    sender = SERVICE_ACCOUNT_EMAIL
-    recipients = ', '.join(EMAIL_RECIPIENTS)
-    subject = "CyberShield: Kết quả phân tích tin nhắn mới"
-
-    body = f"""
-    Kính gửi,
-
-    Hệ thống CyberShield đã phân tích một tin nhắn mới chưa có trong cơ sở dữ liệu.
-
-    --- Tin nhắn gốc ---
-    {original_text}
-
-    --- Kết quả phân tích ---
-    Is Dangerous: {analysis_result.get('is_dangerous')}
-    Types: {analysis_result.get('types')}
-    Score: {analysis_result.get('score')}
-    Reason: {analysis_result.get('reason')}
-    Recommend: {analysis_result.get('recommend')}
-
-    Trân trọng,
-    Hệ thống CyberShield
-    """
-
-    message = MIMEText(body, 'plain', 'utf-8')
-    message['to'] = recipients
-    message['from'] = sender
-    message['subject'] = subject
-
-    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-    try:
-        await asyncio.get_running_loop().run_in_executor(None, lambda: service.users().messages().send(userId='me', body={'raw': raw_message}).execute())
-        print(f"DEBUG: Đã gửi email kết quả phân tích đến {recipients}")
-    except Exception as e:
-        print(f"ERROR: Lỗi khi gửi email: {e}")
-
-async def analyze_with_gemini(text, keywords_str):
+async def analyze_with_gemini_optimized(text: str, keywords_str: str):
+    """Gemini analysis với retry logic tối ưu"""
     if not GOOGLE_API_KEYS:
-        return {"is_dangerous": False, "reason": "Lỗi hệ thống: GOOGLE_API_KEYS không được cấu hình.", "score": 0}
-    for _ in range(len(GOOGLE_API_KEYS)):
+        return {"is_dangerous": False, "reason": "System error", "score": 0}
+    
+    genai = lazy_import_genai()
+    
+    # Truncate input để tiết kiệm tokens
+    text_truncated = text[:1000]  # Limit input size
+    keywords_truncated = keywords_str[:300]  # Limit keywords
+    
+    for attempt in range(min(3, len(GOOGLE_API_KEYS))):  # Max 3 attempts
         try:
-            selected_api_key = random.choice(GOOGLE_API_KEYS)
-            genai.configure(api_key=selected_api_key)
+            api_key = random.choice(GOOGLE_API_KEYS)
+            genai.configure(api_key=api_key)
+            
             model = genai.GenerativeModel("gemini-1.5-flash-latest")
-            prompt = UNIFIED_PROMPT(text, keywords_str)
-            response = await model.generate_content_async(prompt)
-            json_text = response.text.replace("```json", "").replace("```", "").strip()
-            return json.loads(json_text)
-        except json.JSONDecodeError:
-            print(f"JSON parse fail từ Gemini. Raw: {response.text}")
-            return {"is_dangerous": False, "reason": "Gemini trả về JSON không hợp lệ.", "types": "analysis_error", "score": 0, "recommend": "Bỏ qua tin nhắn này.", "suggested_keywords": []}
-        except Exception as e:
-            print(f"Lỗi với Gemini key {selected_api_key[:12]}...: {e}")
+            prompt = create_analysis_prompt(text_truncated, keywords_truncated)
+            
+            response = await model.generate_content_async(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.1,  # Lower temperature for consistency
+                    max_output_tokens=300  # Limit output size
+                )
+            )
+            
+            # Clean and parse JSON
+            json_text = response.text.strip()
+            if json_text.startswith('```json'):
+                json_text = json_text[7:]
+            if json_text.endswith('```'):
+                json_text = json_text[:-3]
+            
+            result = json.loads(json_text.strip())
+            
+            # Validate required fields
+            required_fields = ['is_dangerous', 'reason', 'types', 'score', 'recommend']
+            if all(field in result for field in required_fields):
+                return result
+            else:
+                print(f"WARNING: Missing required fields in Gemini response")
+                
+        except json.JSONDecodeError as e:
+            print(f"JSON parse error: {e}")
             continue
-    return None
+        except Exception as e:
+            print(f"Gemini error (attempt {attempt + 1}): {e}")
+            continue
+    
+    # Fallback response
+    return {
+        "is_dangerous": False,
+        "reason": "Analysis failed",
+        "types": "system_error",
+        "score": 0,
+        "recommend": "Manual review required",
+        "suggested_keywords": []
+    }
 
-async def check_urls_safety(urls: list):
-    if not SAFE_BROWSING_API_KEY or not urls: return []
+async def check_urls_safety_optimized(urls: list):
+    """URL safety check với timeout và limit"""
+    if not SAFE_BROWSING_API_KEY or not urls:
+        return []
+    
+    # Limit số URLs để avoid timeout
+    limited_urls = urls[:5]
+    
     safe_browsing_url = f"https://safebrowsing.googleapis.com/v4/threatMatches:find?key={SAFE_BROWSING_API_KEY}"
-    payload = {"threatInfo": {"threatTypes": ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APPLICATION"], "platformTypes": ["ANY_PLATFORM"], "threatEntryTypes": ["URL"], "threatEntries": [{"url": u} for u in urls]}}
+    payload = {
+        "threatInfo": {
+            "threatTypes": ["MALWARE", "SOCIAL_ENGINEERING"],  # Reduced types
+            "platformTypes": ["ANY_PLATFORM"],
+            "threatEntryTypes": ["URL"],
+            "threatEntries": [{"url": url} for url in limited_urls]
+        }
+    }
+    
     try:
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=10)  # 10s timeout
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(safe_browsing_url, json=payload) as resp:
                 if resp.status == 200:
-                    return (await resp.json()).get("matches", [])
+                    result = await resp.json()
+                    return result.get("matches", [])
                 return []
-    except Exception: return []
+    except asyncio.TimeoutError:
+        print("WARNING: URL safety check timeout")
+        return []
+    except Exception as e:
+        print(f"ERROR: URL safety check failed: {e}")
+        return []
 
-async def perform_full_analysis(text, urls):
-    # 1. Perform semantic search
-    semantic_match_result = await perform_semantic_search(text)
-    if semantic_match_result:
-        print("DEBUG: Trả về kết quả từ semantic cache.")
-        # Add URL analysis to cached result if any URLs are present
+async def send_analysis_email_optimized(original_text: str, analysis_result: dict):
+    """Gửi email với error handling tốt hơn"""
+    try:
+        service = await get_gmail_service()
+        if not service:
+            print("WARNING: Cannot send email - no Gmail service")
+            return
+
+        MIMEText, base64 = lazy_import_email()
+        
+        sender = SERVICE_ACCOUNT_EMAIL
+        recipients = ', '.join(EMAIL_RECIPIENTS)
+        subject = "CyberShield: New Analysis Result"
+
+        # Truncate text for email
+        truncated_text = original_text[:500] + "..." if len(original_text) > 500 else original_text
+        
+        body = f"""
+Analysis Result:
+
+Text: {truncated_text}
+Dangerous: {analysis_result.get('is_dangerous')}
+Score: {analysis_result.get('score')}
+Type: {analysis_result.get('types')}
+Reason: {analysis_result.get('reason')}
+
+Best regards,
+CyberShield System
+        """
+
+        message = MIMEText(body, 'plain', 'utf-8')
+        message['to'] = recipients
+        message['from'] = sender
+        message['subject'] = subject
+
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None,
+            lambda: service.users().messages().send(
+                userId='me',
+                body={'raw': raw_message}
+            ).execute()
+        )
+        
+        print(f"DEBUG: Email sent to {recipients}")
+        
+    except Exception as e:
+        print(f"ERROR: Failed to send email: {e}")
+
+async def perform_full_analysis_optimized(text: str, urls: list):
+    """Main analysis với memory và performance optimization"""
+    
+    # 1. Quick similarity search first
+    semantic_result = await perform_lightweight_search(text)
+    if semantic_result:
+        print("DEBUG: Using cached analysis result")
+        
+        # Add URL analysis if needed
         if urls:
-            url_matches = await check_urls_safety(urls)
+            url_matches = await check_urls_safety_optimized(urls)
             if url_matches:
-                semantic_match_result['url_analysis'] = url_matches
-                cur_reason = semantic_match_result.get("reason", "") or "Phát hiện mối nguy." # Ensure reason is not None
-                semantic_match_result["reason"] = cur_reason + " Ngoài ra, có URL không an toàn."
-                semantic_match_result['is_dangerous'] = True
-                semantic_match_result['score'] = max(semantic_match_result.get('score', 0), 4)
-        return semantic_match_result
+                semantic_result['url_analysis'] = url_matches
+                semantic_result['is_dangerous'] = True
+                semantic_result['score'] = max(semantic_result.get('score', 0), 4)
+                semantic_result['reason'] = (semantic_result.get('reason', '') + " + Unsafe URLs")[:100]
+        
+        return semantic_result
 
-    # 2. If no semantic match, proceed with Gemini analysis
-    print("DEBUG: Không tìm thấy semantic match, tiến hành phân tích bằng Gemini.")
-    existing_keywords_list = [item['text'] for item in await fetch_sheet_data_and_embed()] # Get keywords for Gemini
-    gemini_task = analyze_with_gemini(text, "\n- ".join(existing_keywords_list))
-    urls_task = check_urls_safety(urls)
+    # 2. Gemini analysis for new content
+    print("DEBUG: Performing new Gemini analysis")
+    
+    # Get keywords for context (limited)
+    cached_data = await fetch_sheet_data_optimized()
+    keywords_list = [item['text'] for item in cached_data[:20]]  # Limit keywords
+    keywords_str = '\n- '.join(keywords_list)
+
+    # Concurrent analysis
+    gemini_task = analyze_with_gemini_optimized(text, keywords_str)
+    urls_task = check_urls_safety_optimized(urls) if urls else asyncio.sleep(0)
 
     gemini_result, url_matches = await asyncio.gather(gemini_task, urls_task)
 
-    if not gemini_result: return {'error': 'Gemini fail', 'status_code': 500}
+    if 'error' in gemini_result:
+        return gemini_result
 
-    # 3. Send email with analysis result
-    await send_analysis_email(text, gemini_result) # Send email for new analysis
+    # 3. Send email notification (non-blocking)
+    asyncio.create_task(send_analysis_email_optimized(text, gemini_result))
 
-    final_result = gemini_result
-    final_result['url_analysis'] = url_matches
-
-    if url_matches:
-        final_result['is_dangerous'] = True
-        cur_reason = final_result.get("reason", "") or "Phát hiện mối nguy."
-        final_result["reason"] = cur_reason + " Ngoài ra, có URL không an toàn."
-        final_result['score'] = max(final_result.get('score', 0), 4)
+    # 4. Combine results
+    final_result = gemini_result.copy()
     
-    # Remove suggested_keywords as they are not being appended to sheet anymore
-    final_result.pop('suggested_keywords', None)
+    if url_matches:
+        final_result['url_analysis'] = url_matches
+        final_result['is_dangerous'] = True
+        final_result['score'] = max(final_result.get('score', 0), 4)
+        current_reason = final_result.get('reason', '')
+        final_result['reason'] = (current_reason + " + Unsafe URLs")[:100]
 
+    # Remove unused fields to save bandwidth
+    final_result.pop('suggested_keywords', None)
+    
+    # Force garbage collection after analysis
+    gc.collect()
+    
     return final_result
 
 @analyze_endpoint.route('/analyze', methods=['POST'])
 async def analyze_text():
+    """API endpoint với comprehensive error handling"""
     try:
         data = request.get_json(silent=True)
-        if not data or 'text' not in data: return jsonify({'error': 'Yêu cầu không hợp lệ'}), 400
+        
+        if not data or 'text' not in data:
+            return jsonify({'error': 'Invalid request format'}), 400
+        
         text = data.get('text', '').strip()
         urls = data.get('urls', [])
-        if not text: return jsonify({'error': 'Không có văn bản để phân tích'}), 400
         
-        result = await perform_full_analysis(text, urls)
+        if not text:
+            return jsonify({'error': 'No text to analyze'}), 400
         
-        if 'error' in result: return jsonify({'error': result['error']}), result.get('status_code', 500)
+        if len(text) > 5000:  # Limit input size
+            text = text[:5000]
+            
+        result = await perform_full_analysis_optimized(text, urls)
+        
+        if 'error' in result:
+            return jsonify({'error': result['error']}), result.get('status_code', 500)
+        
         return jsonify({'result': result})
+        
     except Exception as e:
-        return jsonify({'error': f'Lỗi server: {str(e)}'}), 500
+        print(f"ERROR: Server error in analyze_text: {e}")
+        # Force garbage collection on error
+        gc.collect()
+        return jsonify({'error': 'Internal server error'}), 500
+
+# Health check endpoint
+@analyze_endpoint.route('/health', methods=['GET'])
+async def health_check():
+    """Health check cho Render deployment"""
+    try:
+        # Quick system check
+        memory_info = {
+            'cache_size': len(g_cached_sheet_data),
+            'last_fetch': g_sheet_data_last_fetched
+        }
+        return jsonify({
+            'status': 'healthy',
+            'memory_info': memory_info
+        })
+    except Exception as e:
+        return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
