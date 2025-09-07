@@ -48,7 +48,7 @@ if not SAFE_BROWSING_API_KEY:
 UNIFIED_PROMPT = lambda text, keywords: f"""
 Bạn là hệ thống phân tích an toàn thông minh. Nhiệm vụ: phát hiện và phân loại đa loại (multi-type) các nguy cơ trong tin nhắn.
 
-⚡ Khi nào flag ("is_scam": true):
+⚡ Khi nào flag ("is_dangerous": true):
 1. Lừa đảo/phishing:
    - Ưu đãi "quá tốt để tin"
    - Kêu gọi hành động khẩn cấp, tạo áp lực
@@ -74,7 +74,7 @@ Bạn là hệ thống phân tích an toàn thông minh. Nhiệm vụ: phát hi�
 - {keywords}
 
 ⚡ Output JSON (ngắn gọn):
-- "is_scam" (boolean)
+- "is_dangerous" (boolean)
 - "reason" (string, ≤ 2 câu, tóm rõ nhất vì sao flag/không flag)
 - "types" (string, nhiều loại cách nhau bằng dấu phẩy, ví dụ: "scam, phishing, toxic")
 - "score" (0-5)  # 0 = an toàn, 5 = rất nguy hiểm
@@ -195,7 +195,7 @@ async def perform_full_analysis(text, urls):
     final_result['url_analysis'] = url_matches
 
     if url_matches:
-        final_result['is_scam'] = True
+        final_result['is_dangerous'] = True
         final_result['reason'] += " Ngoài ra, một hoặc nhiều URL trong tin nhắn được xác định là không an toàn."
         final_result['score'] = max(final_result['score'], 4)
 
