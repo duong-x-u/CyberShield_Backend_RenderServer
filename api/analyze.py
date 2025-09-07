@@ -32,7 +32,7 @@ GOOGLE_API_KEYS_STR = os.environ.get('GOOGLE_API_KEYS')
 SAFE_BROWSING_API_KEY = os.environ.get('SAFE_BROWSING_API_KEY')
 GOOGLE_SHEET_ID = os.environ.get('GOOGLE_SHEET_ID')
 GOOGLE_SHEET_RANGE = os.environ.get('GOOGLE_SHEET_RANGE', 'Sheet1!A2:F')
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/gmail.send']
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
 if not GOOGLE_API_KEYS_STR:
     raise ValueError("Biến môi trường GOOGLE_API_KEYS là bắt buộc.")
@@ -44,8 +44,6 @@ g_cached_sheet_data = []
 g_sheet_data_last_fetched = 0
 CACHE_DURATION_SECONDS = 900  # Tăng cache time để giảm API calls
 MAX_CACHE_SIZE = 100  # Giới hạn số lượng records
-EMAIL_RECIPIENTS = os.environ.get('EMAIL_RECIPIENTS', 'quoctrieu581 @gmail.com,duongpham18210 @gmail.com').split(',')
-SERVICE_ACCOUNT_EMAIL = os.environ.get('SERVICE_ACCOUNT_EMAIL', 'cyber-shield-server @fluent-plate-465614-b0.iam.gserviceaccount.com')
 
 # --- Memory-efficient text similarity ---
 @lru_cache(maxsize=50)  # Cache kết quả similarity
@@ -98,22 +96,7 @@ async def get_sheets_service():
         print(f"ERROR: Failed to create Sheets service: {e}")
         return None
 
-async def get_gmail_service():
-    """Tạo Gmail service khi cần thiết"""
-    try:
-        google_auth, build_func = lazy_import_google_services()
-        creds, _ = google_auth.default(scopes=SCOPES)
-        
-        if creds and creds.valid:
-            loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(
-                None,
-                lambda: build_func('gmail', 'v1', credentials=creds, cache_discovery=False)
-            )
-        return None
-    except Exception as e:
-        print(f"ERROR: Failed to create Gmail service: {e}")
-        return None
+
 
 # --- Optimized prompt with memory-conscious structure ---
 def create_analysis_prompt(text: str, keywords: str) -> str:
@@ -319,56 +302,7 @@ async def check_urls_safety_optimized(urls: list):
         print(f"ERROR: URL safety check failed: {e}")
         return []
 
-async def send_analysis_email_optimized(original_text: str, analysis_result: dict):
-    """Gửi email với error handling tốt hơn"""
-    try:
-        service = await get_gmail_service()
-        if not service:
-            print("WARNING: Cannot send email - no Gmail service")
-            return
 
-        MIMEText, base64 = lazy_import_email()
-        
-        sender = SERVICE_ACCOUNT_EMAIL
-        recipients = ', '.join(EMAIL_RECIPIENTS)
-        subject = "CyberShield: New Analysis Result"
-
-        # Truncate text for email
-        truncated_text = original_text[:500] + "..." if len(original_text) > 500 else original_text
-        
-        body = f"""
-Analysis Result:
-
-Text: {truncated_text}
-Dangerous: {analysis_result.get('is_dangerous')}
-Score: {analysis_result.get('score')}
-Type: {analysis_result.get('types')}
-Reason: {analysis_result.get('reason')}
-
-Best regards,
-CyberShield System
-        """
-
-        message = MIMEText(body, 'plain', 'utf-8')
-        message['to'] = recipients
-        message['from'] = sender
-        message['subject'] = subject
-
-        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            None,
-            lambda: service.users().messages().send(
-                userId='me',
-                body={'raw': raw_message}
-            ).execute()
-        )
-        
-        print(f"DEBUG: Email sent to {recipients}")
-        
-    except Exception as e:
-        print(f"ERROR: Failed to send email: {e}")
 
 async def perform_full_analysis_optimized(text: str, urls: list):
     """Main analysis với memory và performance optimization"""
@@ -406,8 +340,7 @@ async def perform_full_analysis_optimized(text: str, urls: list):
     if 'error' in gemini_result:
         return gemini_result
 
-    # 3. Send email notification (non-blocking)
-    asyncio.create_task(send_analysis_email_optimized(text, gemini_result))
+    # 3. No email notification (non-blocking)
 
     # 4. Combine results
     final_result = gemini_result.copy()
