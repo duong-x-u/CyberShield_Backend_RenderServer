@@ -7,12 +7,22 @@ services:
     startCommand: |
       gunicorn "app:app" --bind 0.0.0.0:$PORT
     envVars:
-      - key: PORT
-        value: 10000
       - key: PYTHONUNBUFFERED
         value: 1
       - key: FLASK_ENV
         value: production
+      # --- BẮT BUỘC: Thêm hoặc kiểm tra các biến sau ---
+      - key: GOOGLE_API_KEYS
+        sync: false # Để bạn điền giá trị trên dashboard Render cho bảo mật
+      - key: GOOGLE_SHEET_ID
+        sync: false # Để bạn điền giá trị trên dashboard Render
+      - key: GMAIL_USER
+        sync: false # BIẾN MỚI: Email dùng để gửi
+      - key: GMAIL_APP_PASSWORD
+        sync: false # BIẾN MỚI: Mật khẩu ứng dụng
+      # --- TUỲ CHỌN: Nếu bạn dùng tính năng kiểm tra URL ---
+      - key: SAFE_BROWSING_API_KEY
+        sync: false # API key cho Google Safe Browsing
     healthCheckPath: /health
     autoDeploy: true
     branch: main
