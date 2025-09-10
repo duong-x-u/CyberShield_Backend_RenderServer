@@ -2,120 +2,130 @@ import json
 import asyncio
 import os
 import random
-import time
 import gc
-from flask import Blueprint, request, jsonify
-import aiohttp
 import smtplib
 from email.mime.text import MIMEText
+from flask import Blueprint, request, jsonify
+import aiohttp
 
-# --- Lazy imports ---
-def lazy_import_genai():
-    import google.generativeai as genai
-    return genai
-
-# Blueprint
+# --- Blueprint ---
 analyze_endpoint = Blueprint('analyze_endpoint', __name__)
 
-# --- Cấu hình MỚI ---
-# API Keys cho Anna-AI
+# --- Cấu hình ---
 GOOGLE_API_KEYS_STR = os.environ.get('GOOGLE_API_KEYS')
 SAFE_BROWSING_API_KEY = os.environ.get('SAFE_BROWSING_API_KEY')
 if not GOOGLE_API_KEYS_STR:
     raise ValueError("Biến môi trường GOOGLE_API_KEYS là bắt buộc.")
 GOOGLE_API_KEYS = [key.strip() for key in GOOGLE_API_KEYS_STR.split(',') if key.strip()]
 
-# URL của Google Apps Script Web App (DB-AI)
 APPS_SCRIPT_URL = os.environ.get('APPS_SCRIPT_URL')
-
-# Email Credentials cho Feedback Loop
-GMAIL_USER = os.environ.get('GMAIL_USER') # Vẫn giữ lại để gửi mail
+GMAIL_USER = os.environ.get('GMAIL_USER')
 GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD')
 
 # --- HÀM HỖ TRỢ ---
-
 async def check_urls_safety_optimized(urls: list):
-    """Kiểm tra độ an toàn của URL (Không thay đổi)"""
     if not SAFE_BROWSING_API_KEY or not urls: return []
     safe_browsing_url = f"https://safebrowsing.googleapis.com/v4/threatMatches:find?key={SAFE_BROWSING_API_KEY}"
     payload = {"threatInfo": {"threatTypes": ["MALWARE", "SOCIAL_ENGINEERING"], "platformTypes": ["ANY_PLATFORM"], "threatEntryTypes": ["URL"], "threatEntries": [{"url": url} for url in urls[:5]]}}
     try:
-        timeout = aiohttp.ClientTimeout(total=15) # Tăng timeout một chút
+        timeout = aiohttp.ClientTimeout(total=15)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(safe_browsing_url, json=payload) as resp:
                 if resp.status == 200: return (await resp.json()).get("matches", [])
                 return []
     except Exception as e:
-        print(f"ERROR: URL safety check failed: {e}")
+        print(f"🔴 [URL Check] Failed: {e}")
         return []
 
 # --- LUỒNG 1: GỌI DB-AI QUA GOOGLE APPS SCRIPT ---
-
 async def call_gas_db_ai(text: str):
-    """Gọi đến Web App Google Apps Script để thực hiện tìm kiếm ngữ nghĩa."""
     if not APPS_SCRIPT_URL:
         print("🔴 [GAS] APPS_SCRIPT_URL is not set. Skipping DB-AI.")
         return {"found": False, "reason": "GAS URL not configured."}
-
     payload = {"text": text}
     try:
-        timeout = aiohttp.ClientTimeout(total=20) # Cho GAS tối đa 20s để phản hồi
+        timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(APPS_SCRIPT_URL, json=payload) as resp:
                 if resp.status == 200:
                     return await resp.json()
                 else:
-                    # Log lỗi từ GAS nếu có
                     error_text = await resp.text()
-                    print(f"🔴 [GAS] Error calling GAS. Status: {resp.status}, Response: {error_text}")
+                    print(f"🔴 [GAS] Error. Status: {resp.status}, Response: {error_text}")
                     return {"found": False, "reason": f"GAS returned status {resp.status}"}
-    except asyncio.TimeoutError:
-        print("🔴 [GAS] Timeout error when calling GAS.")
-        return {"found": False, "reason": "GAS call timed out."}
     except Exception as e:
-        print(f"🔴 [GAS] Exception when calling GAS: {e}")
+        print(f"🔴 [GAS] Exception: {e}")
         return {"found": False, "reason": f"Exception: {str(e)}"}
 
-# --- LUỒNG 2: ANNA-AI & FEEDBACK LOOP (Không thay đổi nhiều) ---
+# --- LUỒNG 2: ANNA-AI & FEEDBACK LOOP ---
 
+# *** PROMPT MỚI ĐƯỢC CẬP NHẬT Ở ĐÂY ***
 def create_anna_ai_prompt(text: str) -> str:
+    """Tạo prompt chi tiết cho Anna, dựa trên yêu cầu mới của người dùng."""
+    # Ghi chú: Phần {keywords} đã được lược bỏ để giữ cho server Render nhẹ nhất có thể.
     return f"""
-Bạn là hệ thống phân tích an toàn thông minh tên là Anna. Nhiệm vụ: phát hiện và phân loại đa loại (multi-type) các nguy cơ trong tin nhắn.
+Bạn là hệ thống phân tích an toàn thông minh. Nhiệm vụ: phát hiện và phân loại đa loại (multi-type) các nguy cơ trong tin nhắn.
+
 ⚡ Khi nào flag ("is_dangerous": true):
-1. Lừa đảo/phishing: Ưu đãi "quá tốt để tin", kêu gọi hành động khẩn cấp, yêu cầu cung cấp thông tin cá nhân qua link lạ.
-2. Quấy rối/toxic: Ngôn ngữ thô tục, xúc phạm, đe dọa, khủng bố tinh thần.
-3. Nội dung nhạy cảm/chính trị: Kích động bạo lực, phát tán tin sai lệch.
-⚡ Safe-case (không flag): Meme vui, link từ domain chính thống (vd: *.gov.vn), thảo luận trung lập.
+1. Lừa đảo/phishing:
+   - Ưu đãi "quá tốt để tin"
+   - Kêu gọi hành động khẩn cấp, tạo áp lực
+   - Yêu cầu cung cấp thông tin cá nhân (tài khoản, OTP, mật khẩu) qua link lạ
+   - URL/domain đáng ngờ, giả mạo thương hiệu
+2. Quấy rối/toxic:
+   - Ngôn ngữ thô tục, xúc phạm, đe dọa, khủng bố tinh thần
+3. Nội dung nhạy cảm/chính trị:
+   - Kích động bạo lực, nổi loạn, chống phá chính quyền
+   - Phát tán tin sai lệch gây hoang mang
+4. Khác:
+   - Spam hàng loạt, quảng cáo rác
+   - Nội dung có tính ép buộc hoặc thao túng tâm lý
+
+⚡ Safe-case (không flag):
+- Meme, châm biếm vui, không hại ai
+- Link từ domain chính thống (vd: *.gov.vn, *.google.com)
+- Thảo luận chính trị trung lập, không kêu gọi hành động
+- Thông báo dịch vụ hợp pháp, minh bạch
+- Nội dung lịch sử, trích dẫn văn học, bài hát, tài liệu giáo dục chính thống.
+
 ⚡ Output JSON (ngắn gọn):
 - "is_dangerous" (boolean)
-- "reason" (string, ≤ 2 câu)
-- "types" (string, ví dụ: "scam, phishing, toxic")
-- "score" (0-5)
-- "recommend" (string, vd "xoá tin", "cảnh giác với link")
+- "reason" (string, ≤ 2 câu, tóm rõ nhất vì sao flag/không flag)
+- "types" (string, nhiều loại cách nhau bằng dấu phẩy, ví dụ: "scam, phishing, toxic")
+- "score" (0-5)  # 0 = an toàn, 5 = rất nguy hiểm
+- "recommend" (string, hành động cụ thể: vd "xoá tin", "bỏ qua", "cảnh giác với link")
+
 Đoạn tin nhắn: {text}
 """
 
-async def analyze_with_anna_ai(text: str):
-    genai = lazy_import_genai()
-    for attempt in range(min(3, len(GOOGLE_API_KEYS))):
-        try:
-            api_key = random.choice(GOOGLE_API_KEYS)
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash-latest")
-            prompt = create_anna_ai_prompt(text[:2000])
-            response = await model.generate_content_async(
-                prompt,
-                generation_config=genai.types.GenerationConfig(temperature=0.2, max_output_tokens=400)
-            )
-            json_text = response.text.strip().replace('```json', '').replace('```', '').strip()
-            result = json.loads(json_text)
-            print(f"✅ [Anna-AI] Analysis successful.")
-            return result
-        except Exception as e:
-            print(f"🔴 [Anna-AI] Analysis failed (attempt {attempt + 1}): {e}")
-            await asyncio.sleep(1)
-            continue
-    return {"error": "Anna-AI analysis failed.", "status_code": 500}
+async def analyze_with_anna_ai_http(text: str):
+    """Phân tích chuyên sâu với Anna qua HTTP Request trực tiếp (siêu nhẹ)."""
+    api_key = random.choice(GOOGLE_API_KEYS)
+    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
+    prompt = create_anna_ai_prompt(text[:2500])
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.2, "maxOutputTokens": 400, "responseMimeType": "application/json",
+        }
+    }
+    try:
+        timeout = aiohttp.ClientTimeout(total=25)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(gemini_url, json=payload) as resp:
+                if resp.status == 200:
+                    response_json = await resp.json()
+                    json_text = response_json['candidates'][0]['content']['parts'][0]['text']
+                    result = json.loads(json_text)
+                    print("✅ [Anna-AI] Analysis successful via HTTP.")
+                    return result
+                else:
+                    error_text = await resp.text()
+                    print(f"🔴 [Anna-AI] HTTP Error! Status: {resp.status}, Response: {error_text}")
+                    return {"error": f"Anna-AI API Error {resp.status}", "status_code": 500}
+    except Exception as e:
+        print(f"🔴 [Anna-AI] HTTP Exception: {e}")
+        return {"error": "Anna-AI analysis failed due to exception.", "status_code": 500}
 
 def _send_sync_email(original_text, analysis_result):
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
@@ -152,8 +162,7 @@ async def send_email_notification(original_text, analysis_result):
 async def perform_full_analysis(text: str, urls: list):
     final_result = None
     is_new_case = False
-
-    # Luồng 1: Gọi DB-AI qua GAS
+    
     print("➡️ [Flow] Starting Luồng 1: Calling GAS DB-AI...")
     gas_result = await call_gas_db_ai(text)
 
@@ -161,26 +170,18 @@ async def perform_full_analysis(text: str, urls: list):
         print("✅ [Flow] Luồng 1 successful. Found match in database.")
         final_result = gas_result.get("data")
     else:
-        # Fallback hoặc không tìm thấy -> Chuyển sang Luồng 2
-        print(f"🟡 [Flow] Luồng 1 did not find a match (Reason: {gas_result.get('reason')}). Starting Luồng 2: Anna-AI...")
+        print(f"🟡 [Flow] Luồng 1 negative (Reason: {gas_result.get('reason', 'Unknown')}). Starting Luồng 2: Anna-AI...")
         is_new_case = True
-        final_result = await analyze_with_anna_ai(text)
+        final_result = await analyze_with_anna_ai_http(text)
 
-    # Xử lý lỗi từ các luồng
     if 'error' in final_result:
         return final_result
 
-    # Bổ sung kiểm tra URL vào kết quả cuối cùng
     if urls:
         url_matches = await check_urls_safety_optimized(urls)
         if url_matches:
-            final_result.update({
-                'url_analysis': url_matches, 'is_dangerous': True,
-                'score': max(final_result.get('score', 0), 4),
-                'reason': (final_result.get('reason', '') + " + Unsafe URLs")[:100]
-            })
+            final_result.update({'url_analysis': url_matches, 'is_dangerous': True, 'score': max(final_result.get('score', 0), 4), 'reason': (final_result.get('reason', '') + " + Unsafe URLs")[:100]})
 
-    # Feedback Loop: Chỉ gửi mail cho trường hợp mới do Anna phân tích
     if is_new_case:
         print("➡️ [Flow] Scheduling feedback email for new case.")
         asyncio.create_task(send_email_notification(text, final_result))
@@ -213,5 +214,4 @@ async def analyze_text():
 
 @analyze_endpoint.route('/health', methods=['GET'])
 async def health_check():
-    # Health check không cần cache nữa
-    return jsonify({'status': 'healthy', 'architecture': 'GAS + Anna-AI'})
+    return jsonify({'status': 'healthy', 'architecture': 'GAS + Anna-AI (HTTP)'})
