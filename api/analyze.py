@@ -237,6 +237,8 @@ async def analyze_with_anna_ai(text: str):
     return {"error": "Anna-AI analysis failed after multiple attempts.", "status_code": 500}
 
 def _send_sync_email(original_text, analysis_result):
+    print(">>> HEY! TÔI ĐANG CHẠY HÀM GỬI EMAIL PHIÊN BẢN MỚI NHẤT <<<")
+    
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
         print("🟡 [Email] Credentials not set. Skipping notification.")
         return
