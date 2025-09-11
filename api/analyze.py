@@ -148,22 +148,22 @@ KẾT QUẢ PHÂN TÍCH:
 async def perform_full_analysis(text: str, urls: list):
     final_result = None
     is_new_case = False
-
-    print("➡️ [Flow] Starting Luồng 1: Calling Smart GAS DB-AI...")
+    
+    print("➡️ [Flow] Starting Luồng 1: Calling Simple GAS DB-AI...")
     gas_result = await call_gas_db_ai(text)
 
-    if gas_result and gas_result.get("need_more_analyze") == False:
-        print("✅ [Flow] Luồng 1 successful. GAS provided a direct answer.")
+    # Quay lại logic kiểm tra "found" đơn giản
+    if gas_result and gas_result.get("found"):
+        print("✅ [Flow] Luồng 1 successful. Found direct match in database.")
         final_result = gas_result.get("data")
     else:
         reason = "Unknown"
         if gas_result:
-            reason = gas_result.get('reason', 'Need more analyze flag was true')
-        print(f"🟡 [Flow] Luồng 1 requires expert review (Reason: {reason}). Starting Luồng 2: Anna-AI...")
+            reason = gas_result.get('reason', 'Not found in DB')
+        print(f"🟡 [Flow] Luồng 1 negative (Reason: {reason}). Starting Luồng 2: Anna-AI...")
         is_new_case = True
         final_result = await analyze_with_anna_ai_http(text)
-
-    if 'error' in final_result:
+        if 'error' in final_result:
         return final_result
 
     if urls:
@@ -173,12 +173,12 @@ async def perform_full_analysis(text: str, urls: list):
 
     if is_new_case:
         print("➡️ [Flow] Scheduling feedback email for new case via Thread.")
-        # Dùng threading để chạy tác vụ nền
         email_thread = threading.Thread(target=_send_sync_email, args=(text, final_result))
         email_thread.start()
     
     gc.collect()
     return final_result
+
 
 # --- ENDPOINTS ---
 @analyze_endpoint.route('/analyze', methods=['POST'])
