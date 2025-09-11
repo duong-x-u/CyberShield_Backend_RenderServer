@@ -158,22 +158,30 @@ async def send_email_notification(original_text, analysis_result):
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, _send_sync_email, original_text, analysis_result)
 
-# --- HÀM ĐIỀU PHỐI CHÍNH ---
+# --- HÀM ĐIỀU PHỐI CHÍNH (PHIÊN BẢN CẬP NHẬT ĐỂ HIỂU "need_more_analyze") ---
 async def perform_full_analysis(text: str, urls: list):
     final_result = None
     is_new_case = False
-    
-    print("➡️ [Flow] Starting Luồng 1: Calling GAS DB-AI...")
+
+    # Luồng 1: Gọi DB-AI thông minh qua GAS
+    print("➡️ [Flow] Starting Luồng 1: Calling Smart GAS DB-AI...")
     gas_result = await call_gas_db_ai(text)
 
-    if gas_result.get("found"):
-        print("✅ [Flow] Luồng 1 successful. Found match in database.")
+    # Logic mới dựa trên phản hồi của GAS
+    if gas_result and gas_result.get("need_more_analyze") == False:
+        # Trường hợp GAS chắc chắn, không cần Anna
+        print("✅ [Flow] Luồng 1 successful. GAS provided a direct answer.")
         final_result = gas_result.get("data")
     else:
-        print(f"🟡 [Flow] Luồng 1 negative (Reason: {gas_result.get('reason', 'Unknown')}). Starting Luồng 2: Anna-AI...")
+        # Tất cả các trường hợp còn lại (cần phân tích thêm, GAS lỗi, etc.)
+        reason = "Unknown"
+        if gas_result:
+            reason = gas_result.get('reason', 'Need more analyze flag was true')
+        print(f"🟡 [Flow] Luồng 1 requires expert review (Reason: {reason}). Starting Luồng 2: Anna-AI...")
         is_new_case = True
         final_result = await analyze_with_anna_ai_http(text)
 
+    # ... phần code còn lại (xử lý lỗi, thêm URL, gửi email) giữ nguyên ...
     if 'error' in final_result:
         return final_result
 
@@ -188,7 +196,7 @@ async def perform_full_analysis(text: str, urls: list):
     
     gc.collect()
     return final_result
-
+    
 # --- ENDPOINTS ---
 @analyze_endpoint.route('/analyze', methods=['POST'])
 async def analyze_text():
