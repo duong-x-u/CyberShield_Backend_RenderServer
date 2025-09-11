@@ -63,7 +63,7 @@ async def call_gas_db_ai(text: str):
 def create_anna_ai_prompt(text: str) -> str:
     """Prompt đã được nâng cấp để xử lý các ca vùng xám."""
     return f"""
-Bạn là hệ thống phân tích an toàn thông minh, Anna. Nhiệm vụ của bạn là phát hiện các nguy cơ, bao gồm cả những nguy cơ ẩn sau các từ ngữ đa nghĩa và ngữ cảnh phức tạp.
+Bạn là hệ thống phân tích an toàn thông minh, chuyên phân tích các tin nhắn được gửi đến người dùng. Tên của bạn là Anna. Nhiệm vụ của bạn là phát hiện các nguy cơ, bao gồm cả những nguy cơ ẩn sau các từ ngữ đa nghĩa và ngữ cảnh phức tạp. 
 ⚡ Khi nào flag ("is_dangerous": true):
 1. Lừa đảo/phishing: Ưu đãi "quá tốt để tin", kêu gọi hành động khẩn cấp, yêu cầu cung cấp thông tin cá nhân.
 2. Quấy rối/toxic: Ngôn ngữ thô tục, xúc phạm, đe dọa trực tiếp.
@@ -82,7 +82,7 @@ Bạn phải cực kỳ nhạy cảm với những từ ngữ có vẻ trong sá
 - "types" (string, có thể bao gồm nhiều loại. Ví dụ: "xúc phạm", "miệt thị ngoại hình", "nội dung nguy hiểm", "thối não", "không có tính giáo dục")
 - "score" (0-5, đánh dấu là 0 nếu an toàn, đánh dấu từ 1-5 tuỳ theo mức nguy hiểm)
 - "recommend" (string, đưa ra gợi ý cho người dùng nên làm gì tiếp theo)
-Đoạn tin nhắn: {text}
+Sau đây là đoạn tin nhắn người dùng đã nhận được: {text}
 """
 
 async def analyze_with_anna_ai_http(text: str):
