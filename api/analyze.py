@@ -76,12 +76,12 @@ Bạn phải cực kỳ nhạy cảm với những từ ngữ có vẻ trong sá
 - Meme, châm biếm vui, không có ý công kích cá nhân.
 - Link từ domain chính thống.
 - Các từ "chubby", "mập mạp" được dùng với ý nghĩa tích cực, khen ngợi.
-⚡ Output JSON (ngắn gọn):
+⚡ Output JSON (ngắn gọn, chỉ trả lời bằng Tiếng Việt):
 - "is_dangerous" (boolean)
-- "reason" (string, ≤ 2 câu)
-- "types" (string, ví dụ: "toxic, body shaming", "harmful content, brainrot")
-- "score" (0-5)
-- "recommend" (string)
+- "reason" (string, ≤ 2 câu, đưa ra lý do bạn đánh giá nó nguy hiểm)
+- "types" (string, có thể bao gồm nhiều loại. Ví dụ: "xúc phạm", "miệt thị ngoại hình", "nội dung nguy hiểm", "thối não", "không có tính giáo dục")
+- "score" (0-5, đánh dấu là 0 nếu an toàn, đánh dấu từ 1-5 tuỳ theo mức nguy hiểm)
+- "recommend" (string, đưa ra gợi ý cho người dùng nên làm gì tiếp theo)
 Đoạn tin nhắn: {text}
 """
 
