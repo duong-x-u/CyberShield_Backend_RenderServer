@@ -7,6 +7,7 @@ import smtplib
 from email.mime.text import MIMEText
 from flask import Blueprint, request, jsonify
 import aiohttp
+import threading # <<< THÊM MỚI
 
 # --- Blueprint ---
 analyze_endpoint = Blueprint('analyze_endpoint', __name__)
@@ -41,7 +42,7 @@ async def check_urls_safety_optimized(urls: list):
 async def call_gas_db_ai(text: str):
     if not APPS_SCRIPT_URL:
         print("🔴 [GAS] APPS_SCRIPT_URL is not set. Skipping DB-AI.")
-        return {"found": False, "reason": "GAS URL not configured."}
+        return {"need_more_analyze": True, "reason": "GAS URL not configured."}
     payload = {"text": text}
     try:
         timeout = aiohttp.ClientTimeout(total=20)
@@ -52,54 +53,39 @@ async def call_gas_db_ai(text: str):
                 else:
                     error_text = await resp.text()
                     print(f"🔴 [GAS] Error. Status: {resp.status}, Response: {error_text}")
-                    return {"found": False, "reason": f"GAS returned status {resp.status}"}
+                    return {"need_more_analyze": True, "reason": f"GAS returned status {resp.status}"}
     except Exception as e:
         print(f"🔴 [GAS] Exception: {e}")
-        return {"found": False, "reason": f"Exception: {str(e)}"}
+        return {"need_more_analyze": True, "reason": f"Exception: {str(e)}"}
 
 # --- LUỒNG 2: ANNA-AI & FEEDBACK LOOP ---
 
-# *** PROMPT MỚI ĐƯỢC CẬP NHẬT Ở ĐÂY ***
 def create_anna_ai_prompt(text: str) -> str:
-    """Tạo prompt chi tiết cho Anna, dựa trên yêu cầu mới của người dùng."""
-    # Ghi chú: Phần {keywords} đã được lược bỏ để giữ cho server Render nhẹ nhất có thể.
+    """Prompt đã được nâng cấp để xử lý các ca vùng xám."""
     return f"""
-Bạn là hệ thống phân tích an toàn thông minh. Nhiệm vụ: phát hiện và phân loại đa loại (multi-type) các nguy cơ trong tin nhắn.
-
+Bạn là hệ thống phân tích an toàn thông minh, Anna. Nhiệm vụ của bạn là phát hiện các nguy cơ, bao gồm cả những nguy cơ ẩn sau các từ ngữ đa nghĩa và ngữ cảnh phức tạp.
 ⚡ Khi nào flag ("is_dangerous": true):
-1. Lừa đảo/phishing:
-   - Ưu đãi "quá tốt để tin"
-   - Kêu gọi hành động khẩn cấp, tạo áp lực
-   - Yêu cầu cung cấp thông tin cá nhân (tài khoản, OTP, mật khẩu) qua link lạ
-   - URL/domain đáng ngờ, giả mạo thương hiệu
-2. Quấy rối/toxic:
-   - Ngôn ngữ thô tục, xúc phạm, đe dọa, khủng bố tinh thần
-3. Nội dung nhạy cảm/chính trị:
-   - Kích động bạo lực, nổi loạn, chống phá chính quyền
-   - Phát tán tin sai lệch gây hoang mang
-4. Khác:
-   - Spam hàng loạt, quảng cáo rác
-   - Nội dung có tính ép buộc hoặc thao túng tâm lý
-
+1. Lừa đảo/phishing: Ưu đãi "quá tốt để tin", kêu gọi hành động khẩn cấp, yêu cầu cung cấp thông tin cá nhân.
+2. Quấy rối/toxic: Ngôn ngữ thô tục, xúc phạm, đe dọa trực tiếp.
+3. Nội dung nhạy cảm/chính trị: Kích động bạo lực, phát tán tin sai lệch.
+⚡ CẢNH BÁO NGỮ CẢNH & TỪ ĐA NGHĨA (QUAN TRỌNG):
+Bạn phải cực kỳ nhạy cảm với những từ ngữ có vẻ trong sáng nhưng được dùng với ý định xấu. Hãy tìm kiếm dấu hiệu của sự mỉa mai, công kích, hạ thấp hoặc thao túng.
+- VÍ DỤ 1 (Body Shaming): Một từ như "chubby" (mũm mĩm) là vô hại, nhưng nếu được dùng trong ngữ cảnh chê bai ("Dạo này trông chubby quá, ăn lắm vào rồi lăn nhé") thì đó là hành vi độc hại.
+- VÍ DỤ 2 ("Brainrot"): Một nội dung có vẻ "vô tri", "giải trí" nhưng lại lặp đi lặp lại các hình ảnh, âm thanh phi logic một cách ám ảnh, không có tính giáo dục và có thể gây sai lệch nhận thức cho trẻ em thì phải được gắn cờ là có hại.
 ⚡ Safe-case (không flag):
-- Meme, châm biếm vui, không hại ai
-- Link từ domain chính thống (vd: *.gov.vn, *.google.com)
-- Thảo luận chính trị trung lập, không kêu gọi hành động
-- Thông báo dịch vụ hợp pháp, minh bạch
-- Nội dung lịch sử, trích dẫn văn học, bài hát, tài liệu giáo dục chính thống.
-
+- Meme, châm biếm vui, không có ý công kích cá nhân.
+- Link từ domain chính thống.
+- Các từ "chubby", "mập mạp" được dùng với ý nghĩa tích cực, khen ngợi.
 ⚡ Output JSON (ngắn gọn):
 - "is_dangerous" (boolean)
-- "reason" (string, ≤ 2 câu, tóm rõ nhất vì sao flag/không flag)
-- "types" (string, nhiều loại cách nhau bằng dấu phẩy, ví dụ: "scam, phishing, toxic")
-- "score" (0-5)  # 0 = an toàn, 5 = rất nguy hiểm
-- "recommend" (string, hành động cụ thể: vd "xoá tin", "bỏ qua", "cảnh giác với link")
-
+- "reason" (string, ≤ 2 câu)
+- "types" (string, ví dụ: "toxic, body shaming", "harmful content, brainrot")
+- "score" (0-5)
+- "recommend" (string)
 Đoạn tin nhắn: {text}
 """
 
 async def analyze_with_anna_ai_http(text: str):
-    """Phân tích chuyên sâu với Anna qua HTTP Request trực tiếp (siêu nhẹ)."""
     api_key = random.choice(GOOGLE_API_KEYS)
     gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
     prompt = create_anna_ai_prompt(text[:2500])
@@ -127,10 +113,14 @@ async def analyze_with_anna_ai_http(text: str):
         print(f"🔴 [Anna-AI] HTTP Exception: {e}")
         return {"error": "Anna-AI analysis failed due to exception.", "status_code": 500}
 
+# *** THAY ĐỔI LỚN NẰM Ở CÁCH GỌI HÀM NÀY ***
 def _send_sync_email(original_text, analysis_result):
+    """Hàm này giờ sẽ được chạy trong một thread riêng biệt."""
+    print("➡️ [Email Thread] Starting email sending process...")
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
-        print("🟡 [Email] Credentials not set. Skipping notification.")
+        print("🟡 [Email Thread] Credentials not set. Skipping notification.")
         return
+    
     subject = "[CyberShield Report] Yêu cầu bổ sung CSDL"
     body = f"""Một tin nhắn mới đã được Anna-AI phân tích.
 Vui lòng xem xét và bổ sung vào Google Sheets nếu cần thiết.
@@ -150,30 +140,22 @@ KẾT QUẢ PHÂN TÍCH:
         server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
         server.sendmail(GMAIL_USER, to_email, msg.as_string())
         server.quit()
-        print("✅ [Email] Feedback email sent successfully.")
+        print("✅ [Email Thread] Feedback email sent successfully.")
     except Exception as e:
-        print(f"🔴 [Email] Failed to send feedback email: {e}")
+        print(f"🔴 [Email Thread] Failed to send feedback email: {e}")
 
-async def send_email_notification(original_text, analysis_result):
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, _send_sync_email, original_text, analysis_result)
-
-# --- HÀM ĐIỀU PHỐI CHÍNH (PHIÊN BẢN CẬP NHẬT ĐỂ HIỂU "need_more_analyze") ---
+# --- HÀM ĐIỀU PHỐI CHÍNH ---
 async def perform_full_analysis(text: str, urls: list):
     final_result = None
     is_new_case = False
 
-    # Luồng 1: Gọi DB-AI thông minh qua GAS
     print("➡️ [Flow] Starting Luồng 1: Calling Smart GAS DB-AI...")
     gas_result = await call_gas_db_ai(text)
 
-    # Logic mới dựa trên phản hồi của GAS
     if gas_result and gas_result.get("need_more_analyze") == False:
-        # Trường hợp GAS chắc chắn, không cần Anna
         print("✅ [Flow] Luồng 1 successful. GAS provided a direct answer.")
         final_result = gas_result.get("data")
     else:
-        # Tất cả các trường hợp còn lại (cần phân tích thêm, GAS lỗi, etc.)
         reason = "Unknown"
         if gas_result:
             reason = gas_result.get('reason', 'Need more analyze flag was true')
@@ -181,7 +163,6 @@ async def perform_full_analysis(text: str, urls: list):
         is_new_case = True
         final_result = await analyze_with_anna_ai_http(text)
 
-    # ... phần code còn lại (xử lý lỗi, thêm URL, gửi email) giữ nguyên ...
     if 'error' in final_result:
         return final_result
 
@@ -191,12 +172,14 @@ async def perform_full_analysis(text: str, urls: list):
             final_result.update({'url_analysis': url_matches, 'is_dangerous': True, 'score': max(final_result.get('score', 0), 4), 'reason': (final_result.get('reason', '') + " + Unsafe URLs")[:100]})
 
     if is_new_case:
-        print("➡️ [Flow] Scheduling feedback email for new case.")
-        asyncio.create_task(send_email_notification(text, final_result))
+        print("➡️ [Flow] Scheduling feedback email for new case via Thread.")
+        # Dùng threading để chạy tác vụ nền
+        email_thread = threading.Thread(target=_send_sync_email, args=(text, final_result))
+        email_thread.start()
     
     gc.collect()
     return final_result
-    
+
 # --- ENDPOINTS ---
 @analyze_endpoint.route('/analyze', methods=['POST'])
 async def analyze_text():
@@ -222,4 +205,4 @@ async def analyze_text():
 
 @analyze_endpoint.route('/health', methods=['GET'])
 async def health_check():
-    return jsonify({'status': 'healthy', 'architecture': 'GAS + Anna-AI (HTTP)'})
+    return jsonify({'status': 'healthy', 'architecture': 'GAS + Anna-AI (Threaded Feedback)'})
