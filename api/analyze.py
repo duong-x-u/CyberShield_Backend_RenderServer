@@ -164,7 +164,7 @@ async def perform_full_analysis(text: str, urls: list):
         is_new_case = True
         final_result = await analyze_with_anna_ai_http(text)
         if 'error' in final_result:
-        return final_result
+            return final_result
 
     if urls:
         url_matches = await check_urls_safety_optimized(urls)
