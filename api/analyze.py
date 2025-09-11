@@ -38,25 +38,37 @@ async def check_urls_safety_optimized(urls: list):
         print(f"🔴 [URL Check] Failed: {e}")
         return []
 
-# --- LUỒNG 1: GỌI DB-AI QUA GOOGLE APPS SCRIPT ---
+# --- LUỒNG 1: GỌI DB-AI QUA GOOGLE APPS SCRIPT (PHIÊN BẢN SỬA LỖI) ---
 async def call_gas_db_ai(text: str):
     if not APPS_SCRIPT_URL:
         print("🔴 [GAS] APPS_SCRIPT_URL is not set. Skipping DB-AI.")
-        return {"need_more_analyze": True, "reason": "GAS URL not configured."}
-    payload = {"text": text}
+        # Sửa lại phản hồi ở đây cho khớp logic mới
+        return {"found": False, "reason": "GAS URL not configured."}
+
+    # Mã hóa payload thành bytes UTF-8 một cách tường minh
+    payload_str = json.dumps({"text": text})
+    payload_bytes = payload_str.encode('utf-8')
+    
+    # Thêm header Content-Type với charset=utf-8
+    headers = {'Content-Type': 'application/json; charset=utf-8'}
+
     try:
         timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(APPS_SCRIPT_URL, json=payload) as resp:
+            # === SỬA LẠI DÒNG NÀY ===
+            # Gửi đi `data=payload_bytes` và `headers=headers`
+            async with session.post(APPS_SCRIPT_URL, data=payload_bytes, headers=headers) as resp:
                 if resp.status == 200:
                     return await resp.json()
                 else:
                     error_text = await resp.text()
                     print(f"🔴 [GAS] Error. Status: {resp.status}, Response: {error_text}")
-                    return {"need_more_analyze": True, "reason": f"GAS returned status {resp.status}"}
+                    # Sửa lại phản hồi ở đây cho khớp logic mới
+                    return {"found": False, "reason": f"GAS returned status {resp.status}"}
     except Exception as e:
         print(f"🔴 [GAS] Exception: {e}")
-        return {"need_more_analyze": True, "reason": f"Exception: {str(e)}"}
+        # Sửa lại phản hồi ở đây cho khớp logic mới
+        return {"found": False, "reason": f"Exception: {str(e)}"}
 
 # --- LUỒNG 2: ANNA-AI & FEEDBACK LOOP ---
 
