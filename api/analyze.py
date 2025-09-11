@@ -188,7 +188,7 @@ async def analyze_text():
         if not data or 'text' not in data: return jsonify({'error': 'Invalid request format'}), 400
         text = data.get('text', '').strip()
         
-        print(f"--------------------\n📬 [Input] Received text: '{text[:100]}...'")
+        print(f"--------------------\n📬 [Input] Received text: '{text}...'")
         if not text: return jsonify({'error': 'No text to analyze'}), 400
         
         result = await perform_full_analysis(text[:3000], data.get('urls', []))
