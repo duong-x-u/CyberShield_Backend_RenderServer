@@ -7,7 +7,7 @@ import smtplib
 from email.mime.text import MIMEText
 from flask import Blueprint, request, jsonify
 import aiohttp
-import threading # <<< THÊM MỚI
+import threading
 
 # --- Blueprint ---
 analyze_endpoint = Blueprint('analyze_endpoint', __name__)
@@ -35,37 +35,34 @@ async def check_urls_safety_optimized(urls: list):
                 if resp.status == 200: return (await resp.json()).get("matches", [])
                 return []
     except Exception as e:
-        print(f"🔴 [URL Check] Failed: {e}")
+        print(f"🔴 [Kiểm tra URL] Thất bại: {e}")
         return []
 
-# --- LUỒNG 1: GỌI DB-AI QUA GOOGLE APPS SCRIPT (PHIÊN BẢN SỬA LỖI) ---
+# --- LUỒNG 1: GỌI LEO QUA GOOGLE APPS SCRIPT ---
 async def call_gas_db_ai(text: str):
     if not APPS_SCRIPT_URL:
-        print("🔴 [GAS] APPS_SCRIPT_URL is not set.")
-        return {"found": False, "reason": "GAS URL not configured."}
+        print("🔴 [Leo] Lỗi: Biến môi trường APPS_SCRIPT_URL chưa được thiết lập.")
+        return {"found": False, "reason": "GAS URL chưa được cấu hình."}
     
-    # Quay lại cách gửi JSON đơn giản
     payload = {"text": text}
     
     try:
         timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            # Dùng json=payload để aiohttp tự xử lý header và encoding
             async with session.post(APPS_SCRIPT_URL, json=payload) as resp:
                 if resp.status == 200:
                     return await resp.json()
                 else:
                     error_text = await resp.text()
-                    print(f"🔴 [GAS] Error. Status: {resp.status}, Response: {error_text}")
-                    return {"found": False, "reason": f"GAS returned status {resp.status}"}
+                    print(f"🔴 [Leo] Lỗi từ GAS. Trạng thái: {resp.status}, Phản hồi: {error_text}")
+                    return {"found": False, "reason": f"GAS trả về lỗi {resp.status}"}
     except Exception as e:
-        print(f"🔴 [GAS] Exception: {e}")
-        return {"found": False, "reason": f"Exception: {str(e)}"}
+        print(f"🔴 [Leo] Lỗi kết nối đến GAS: {e}")
+        return {"found": False, "reason": f"Ngoại lệ: {str(e)}"}
 
-# --- LUỒNG 2: ANNA-AI & FEEDBACK LOOP ---
-
+# --- LUỒNG 2: ANNA-AI & VÒNG LẶP PHẢN HỒI ---
 def create_anna_ai_prompt(text: str) -> str:
-    """Prompt đã được nâng cấp để xử lý các ca vùng xám."""
+    # Prompt này đã được nâng cấp
     return f"""
 Bạn là hệ thống phân tích an toàn thông minh, chuyên phân tích các tin nhắn được gửi đến người dùng. Tên của bạn là Anna. Nhiệm vụ của bạn là phát hiện các nguy cơ, bao gồm cả những nguy cơ ẩn sau các từ ngữ đa nghĩa và ngữ cảnh phức tạp. 
 ⚡ Khi nào flag ("is_dangerous": true):
@@ -95,9 +92,7 @@ async def analyze_with_anna_ai_http(text: str):
     prompt = create_anna_ai_prompt(text[:2500])
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.2, "maxOutputTokens": 400, "responseMimeType": "application/json",
-        }
+        "generationConfig": { "temperature": 0.2, "maxOutputTokens": 400, "responseMimeType": "application/json" }
     }
     try:
         timeout = aiohttp.ClientTimeout(total=25)
@@ -107,27 +102,27 @@ async def analyze_with_anna_ai_http(text: str):
                     response_json = await resp.json()
                     json_text = response_json['candidates'][0]['content']['parts'][0]['text']
                     result = json.loads(json_text)
-                    print("✅ [Anna-AI] Analysis successful via HTTP.")
                     return result
                 else:
                     error_text = await resp.text()
-                    print(f"🔴 [Anna-AI] HTTP Error! Status: {resp.status}, Response: {error_text}")
-                    return {"error": f"Anna-AI API Error {resp.status}", "status_code": 500}
+                    print(f"🔴 [Anna] Lỗi HTTP! Trạng thái: {resp.status}, Phản hồi: {error_text}")
+                    return {"error": f"Lỗi API Anna {resp.status}", "status_code": 500}
     except Exception as e:
-        print(f"🔴 [Anna-AI] HTTP Exception: {e}")
-        return {"error": "Anna-AI analysis failed due to exception.", "status_code": 500}
+        print(f"🔴 [Anna] Lỗi ngoại lệ khi gọi HTTP: {e}")
+        return {"error": "Phân tích với Anna thất bại do có ngoại lệ.", "status_code": 500}
 
-# *** THAY ĐỔI LỚN NẰM Ở CÁCH GỌI HÀM NÀY ***
 def _send_sync_email(original_text, analysis_result):
-    """Hàm này giờ sẽ được chạy trong một thread riêng biệt."""
-    print("➡️ [Email Thread] Starting email sending process...")
+    print("➡️  [Email] Bắt đầu tiến trình gửi email trong luồng riêng...")
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
-        print("🟡 [Email Thread] Credentials not set. Skipping notification.")
+        print("🟡 [Email] Thiếu thông tin xác thực. Bỏ qua việc gửi email.")
         return
     
-    subject = "[CyberShield Report] Yêu cầu bổ sung CSDL"
-    body = f"""Một tin nhắn mới đã được Anna-AI phân tích.
-Vui lòng xem xét và bổ sung vào Google Sheets nếu cần thiết.
+    detected_types = analysis_result.get("types", "Không xác định")
+    score = analysis_result.get("score", "N/A")
+    subject = f"[CyberShield Report] Nguy hiểm mới: {detected_types} (Điểm: {score})"
+
+    body = f"""Một tin nhắn mới đã được Anna-AI phân tích và gắn cờ NGUY HIỂM.
+Vui lòng xem xét và bổ sung vào Google Sheets.
 ----------------------------------------------------------
 TIN NHẮN GỐC:
 {original_text}
@@ -138,75 +133,91 @@ KẾT QUẢ PHÂN TÍCH:
     to_email = 'duongpham18210@gmail.com'
     msg = MIMEText(body, 'plain', 'utf-8')
     msg['From'], msg['To'], msg['Subject'] = GMAIL_USER, to_email, subject
+    
     try:
+        print(f"📦 [Email] Chuẩn bị gửi email. Tiêu đề: '{subject}'")
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
         server.sendmail(GMAIL_USER, to_email, msg.as_string())
         server.quit()
-        print("✅ [Email Thread] Feedback email sent successfully.")
+        print("✅ [Email] Gửi email phản hồi thành công.")
     except Exception as e:
-        print(f"🔴 [Email Thread] Failed to send feedback email: {e}")
+        print(f"🔴 [Email] Gửi email phản hồi thất bại: {e}")
 
 # --- HÀM ĐIỀU PHỐI CHÍNH ---
 async def perform_full_analysis(text: str, urls: list):
     final_result = None
-    is_new_case = False
+    is_new_case_by_anna = False
     
-    print("➡️ [Flow] Starting Luồng 1: Calling Simple GAS DB-AI...")
+    # 1. Thêm Log Debug
+    print(f"📜 [Bắt đầu] Phân tích tin nhắn: '{text[:150]}...'")
+    print("➡️ [Luồng 1] Bắt đầu gọi Leo...")
     gas_result = await call_gas_db_ai(text)
 
-    # Quay lại logic kiểm tra "found" đơn giản
     if gas_result and gas_result.get("found"):
-        print("✅ [Flow] Luồng 1 successful. Found direct match in database.")
+        print("✅ [Luồng 1] Thành công. Tìm thấy kết quả trong CSDL.")
         final_result = gas_result.get("data")
+        # 1. Thêm Log Debug
+        print(f"📄 [Kết quả của Leo] Trả về: {json.dumps(final_result, ensure_ascii=False)}")
     else:
-        reason = "Unknown"
+        reason = "Không xác định"
         if gas_result:
-            reason = gas_result.get('reason', 'Not found in DB')
-        print(f"🟡 [Flow] Luồng 1 negative (Reason: {reason}). Starting Luồng 2: Anna-AI...")
-        is_new_case = True
+            reason = gas_result.get('reason', 'Không tìm thấy trong CSDL')
+        print(f"🟡 [Luồng 1] Thất bại (Lý do: {reason}). Bắt đầu Luồng 2: Anna...")
+        
         final_result = await analyze_with_anna_ai_http(text)
+        # 1. Thêm Log Debug
+        print(f"📄 [Kết quả của Anna] Trả về: {json.dumps(final_result, ensure_ascii=False)}")
+
         if 'error' in final_result:
             return final_result
+            
+        is_new_case_by_anna = True 
 
     if urls:
         url_matches = await check_urls_safety_optimized(urls)
         if url_matches:
-            final_result.update({'url_analysis': url_matches, 'is_dangerous': True, 'score': max(final_result.get('score', 0), 4), 'reason': (final_result.get('reason', '') + " + Unsafe URLs")[:100]})
+            final_result.update({'url_analysis': url_matches, 'is_dangerous': True, 'score': max(final_result.get('score', 0), 4), 'reason': (final_result.get('reason', '') + " + Các URL không an toàn")[:100]})
 
-    if is_new_case:
-        print("➡️ [Flow] Scheduling feedback email for new case via Thread.")
+    # 3. Thêm Logic Lọc Email
+    # Chuyển giá trị is_dangerous về dạng boolean chuẩn để so sánh
+    is_dangerous_bool = str(final_result.get("is_dangerous", False)).lower() == 'true'
+
+    if is_new_case_by_anna and is_dangerous_bool:
+        print("➡️ [Phản hồi] Phát hiện ca nguy hiểm mới. Lên lịch gửi email...")
         email_thread = threading.Thread(target=_send_sync_email, args=(text, final_result))
         email_thread.start()
-    
+    elif is_new_case_by_anna:
+        print("➡️ [Phản hồi] Phát hiện ca an toàn mới. Bỏ qua việc gửi email.")
+
     gc.collect()
     return final_result
-
 
 # --- ENDPOINTS ---
 @analyze_endpoint.route('/analyze', methods=['POST'])
 async def analyze_text():
     try:
         data = request.get_json(silent=True)
-        if not data or 'text' not in data: return jsonify({'error': 'Invalid request format'}), 400
+        if not data or 'text' not in data: return jsonify({'error': 'Định dạng yêu cầu không hợp lệ'}), 400
         text = data.get('text', '').strip()
         
-        print(f"--------------------\n📬 [Input] Received text: '{text}...'")
-        if not text: return jsonify({'error': 'No text to analyze'}), 400
+        # 1 & 2. Thêm Log Debug & Việt hóa
+        print(f"--------------------\n📬 [Đầu vào] Nhận được tin nhắn: '{text[:100]}...'")
+        if not text: return jsonify({'error': 'Không có văn bản để phân tích'}), 400
         
         result = await perform_full_analysis(text[:3000], data.get('urls', []))
         
         if 'error' in result:
             return jsonify({'error': result['error']}), result.get('status_code', 500)
         
-        print("✅ [Response] Sent result back to client.")
+        print("✅ [Phản hồi] Đã gửi kết quả về cho client.")
         return jsonify({'result': result})
     except Exception as e:
-        print(f"🔴 [FATAL] Server error in analyze_text: {e}")
+        print(f"🔴 [LỖI NGHIÊM TRỌNG] Lỗi server trong analyze_text: {e}")
         gc.collect()
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'error': 'Lỗi nội bộ server'}), 500
 
 @analyze_endpoint.route('/health', methods=['GET'])
 async def health_check():
-    return jsonify({'status': 'healthy', 'architecture': 'GAS + Anna-AI (Threaded Feedback)'})
+    return jsonify({'status': 'Bình thường', 'architecture': 'GAS + Anna-AI (Phản hồi qua luồng & có bộ lọc)'})
