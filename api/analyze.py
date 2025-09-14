@@ -13,6 +13,7 @@ import base64
 # --- Crypto Imports ---
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP, AES
+from Crypto.Random import get_random_bytes
 
 # --- Blueprint ---
 analyze_endpoint = Blueprint('analyze_endpoint', __name__)
@@ -37,43 +38,6 @@ try:
 except Exception as e:
     raise ValueError(f"Không thể import Private Key. Lỗi: {e}")
 
-
-# --- HÀM MÃ HÓA / GIẢI MÃ ---
-
-def decrypt_request(encrypted_key, encrypted_data, iv):
-    """Giải mã yêu cầu từ client."""
-    try:
-        # Giải mã session key bằng RSA private key
-        cipher_rsa = PKCS1_OAEP.new(SERVER_PRIVATE_KEY)
-        session_key = cipher_rsa.decrypt(base64.b64decode(encrypted_key))
-
-        # Giải mã dữ liệu bằng AES session key
-        cipher_aes = AES.new(session_key, AES.MODE_GCM, nonce=base64.b64decode(iv))
-        decrypted_data_bytes = cipher_aes.decrypt(base64.b64decode(encrypted_data))
-        
-        # Dữ liệu đã giải mã có thể chứa tag xác thực ở cuối, cần xác minh
-        # Trong chế độ GCM, việc decrypt và verify được thực hiện cùng lúc.
-        # Nếu tag không hợp lệ, nó sẽ raise ValueError.
-        
-        return json.loads(decrypted_data_bytes.decode('utf-8'))
-    except (ValueError, KeyError) as e:
-        print(f"🔴 [Crypto] Lỗi giải mã: {e}")
-        return None
-
-def encrypt_response(data, session_key, iv):
-    """Mã hóa phản hồi để gửi về client."""
-    try:
-        # Mã hóa dữ liệu bằng AES session key
-        cipher_aes = AES.new(session_key, AES.MODE_GCM, nonce=base64.b64decode(iv))
-        encrypted_data, tag = cipher_aes.encrypt_and_digest(json.dumps(data).encode('utf-8'))
-        
-        return {
-            "encrypted_response": base64.b64encode(encrypted_data).decode('utf-8'),
-            "tag": base64.b64encode(tag).decode('utf-8')
-        }
-    except Exception as e:
-        print(f"🔴 [Crypto] Lỗi mã hóa: {e}")
-        return None
 
 # --- HÀM HỖ TRỢ (giữ nguyên) ---
 async def check_urls_safety_optimized(urls: list):
@@ -170,6 +134,7 @@ def _send_sync_email(original_text, analysis_result):
     subject = f"[CyberShield Report] Nguy hiểm mới: {detected_types} (Điểm: {score})"
 
     body = f'''Một tin nhắn mới đã được Anna-AI phân tích và gắn cờ NGUY HIỂM.
+
 Vui lòng xem xét và bổ sung vào Google Sheets.
 ----------------------------------------------------------
 TIN NHẮN GỐC:
@@ -194,13 +159,13 @@ KẾT QUẢ PHÂN TÍCH:
         print(f"🔴 [Email] Gửi email phản hồi thất bại: {e}")
 
 
-# --- HÀM ĐIỀU PHỐI CHÍNH (giữ nguyên) ---
+# --- HÀM ĐIỀU PHỐI CHÍNH ---
 async def perform_full_analysis(text: str, urls: list):
-    # ... (giữ nguyên logic phân tích)
     final_result = None
     is_new_case_by_anna = False
     
-    print(f"📜 [Bắt đầu] Phân tích tin nhắn: '{text[:150]}...'")
+    # Đã vô hiệu hóa để bảo mật, chỉ bật khi debug sâu
+    # print(f"📜 [Bắt đầu] Phân tích tin nhắn: '{text[:150]}...'" ) 
     print("➡️ [Luồng 1] Bắt đầu gọi Leo (GAS DB-AI)...")
     gas_result = await call_gas_db_ai(text)
 
@@ -237,7 +202,7 @@ async def perform_full_analysis(text: str, urls: list):
     gc.collect()
     return final_result
 
-# --- ENDPOINTS (ĐÃ CẬP NHẬT) ---
+# --- ENDPOINTS (ĐÃ CẬP NHẬT VÀ SỬA LỖI IV REUSE) ---
 @analyze_endpoint.route('/analyze', methods=['POST'])
 async def analyze_text_encrypted():
     try:
@@ -245,8 +210,8 @@ async def analyze_text_encrypted():
         if not request_data or 'encrypted_key' not in request_data or 'encrypted_data' not in request_data or 'iv' not in request_data:
             return jsonify({'error': 'Yêu cầu không hợp lệ. Thiếu các trường mã hóa.'}), 400
 
-        print("--------------------
-📬 [Đầu vào] Nhận được yêu cầu đã mã hóa...")
+        print("--------------------\n📬 [Đầu vào] Nhận được yêu cầu đã mã hóa...")
+        print(f"🐛 DEBUG: Dữ liệu mã hóa nhận được: {request_data}")
 
         # 1. Giải mã session key
         try:
@@ -258,16 +223,17 @@ async def analyze_text_encrypted():
 
         # 2. Giải mã dữ liệu
         try:
-            iv = base64.b64decode(request_data['iv'])
+            iv_from_client = base64.b64decode(request_data['iv'])
             tag = base64.b64decode(request_data['tag'])
             encrypted_data = base64.b64decode(request_data['encrypted_data'])
             
-            cipher_aes = AES.new(session_key, AES.MODE_GCM, nonce=iv)
+            cipher_aes = AES.new(session_key, AES.MODE_GCM, nonce=iv_from_client)
             decrypted_payload_bytes = cipher_aes.decrypt_and_verify(encrypted_data, tag)
             payload = json.loads(decrypted_payload_bytes.decode('utf-8'))
             text = payload.get('text', '').strip()
             urls = payload.get('urls', [])
             print("✅ [Crypto] Giải mã yêu cầu thành công.")
+            print(f"🐛 DEBUG: Dữ liệu đã giải mã: {text}")
         except (ValueError, KeyError) as e:
             print(f"🔴 [Crypto] Lỗi giải mã dữ liệu hoặc xác thực thất bại: {e}")
             return jsonify({'error': 'Dữ liệu không hợp lệ hoặc đã bị thay đổi.'}), 400
@@ -278,34 +244,39 @@ async def analyze_text_encrypted():
         # 3. Thực hiện phân tích như cũ
         result = await perform_full_analysis(text[:3000], urls)
         
+        # Chuẩn bị dữ liệu phản hồi
         if 'error' in result:
-            # Mã hóa thông báo lỗi trước khi gửi về
-            error_response = {"status": "error", "message": result['error']}
-            cipher_aes_out = AES.new(session_key, AES.MODE_GCM, nonce=iv)
-            encrypted_error, error_tag = cipher_aes_out.encrypt_and_digest(json.dumps(error_response).encode('utf-8'))
-            return jsonify({
-                "encrypted_response": base64.b64encode(encrypted_error).decode('utf-8'),
-                "tag": base64.b64encode(error_tag).decode('utf-8')
-            }), result.get('status_code', 500)
+            response_data = {"status": "error", "message": result['error']}
+        else:
+            response_data = {"status": "success", "result": result}
+        
+        print(f"🐛 DEBUG: Kết quả phân tích (chưa mã hóa): {response_data}")
 
-        # 4. Mã hóa kết quả trả về
-        final_response_data = {"status": "success", "result": result}
-        cipher_aes_out = AES.new(session_key, AES.MODE_GCM, nonce=iv)
-        encrypted_final_response, final_tag = cipher_aes_out.encrypt_and_digest(json.dumps(final_response_data).encode('utf-8'))
+        # 4. Mã hóa kết quả trả về với IV MỚI
+        response_iv = get_random_bytes(12) # KHẮC PHỤC: Tạo IV mới cho mỗi lần mã hóa
+        cipher_aes_out = AES.new(session_key, AES.MODE_GCM, nonce=response_iv)
+        encrypted_response, response_tag = cipher_aes_out.encrypt_and_digest(json.dumps(response_data).encode('utf-8'))
 
+        response_payload = {
+            "iv": base64.b64encode(response_iv).decode('utf-8'),
+            "encrypted_response": base64.b64encode(encrypted_response).decode('utf-8'),
+            "tag": base64.b64encode(response_tag).decode('utf-8')
+        }
+        
+        print(f"🐛 DEBUG: Kết quả phản hồi (đã mã hóa): {response_payload}")
         print("✅ [Phản hồi] Đã mã hóa và gửi kết quả về cho client.")
-        return jsonify({
-            "encrypted_response": base64.b64encode(encrypted_final_response).decode('utf-8'),
-            "tag": base64.b64encode(final_tag).decode('utf-8')
-        })
+        
+        if 'error' in result:
+             return jsonify(response_payload), result.get('status_code', 500)
+        else:
+             return jsonify(response_payload)
 
     except Exception as e:
         print(f"🔴 [LỖI NGHIÊM TRỌNG] Lỗi server trong hàm analyze_text_encrypted: {e}")
         gc.collect()
-        # Không trả về chi tiết lỗi ở đây để tránh lộ thông tin
         return jsonify({'error': 'Lỗi nội bộ server'}), 500
 
 
 @analyze_endpoint.route('/health', methods=['GET'])
 async def health_check():
-    return jsonify({'status': 'Bình thường', 'architecture': 'Encrypted | GAS + Anna-AI (Phản hồi qua luồng & có bộ lọc)'})
+    return jsonify({'status': 'Bình thường', 'architecture': 'Encrypted (IV Reuse Fixed) | GAS + Anna-AI'})
