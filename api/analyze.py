@@ -8,12 +8,6 @@ from email.mime.text import MIMEText
 from flask import Blueprint, request, jsonify
 import aiohttp
 import threading
-import base64
-
-# --- Crypto Imports ---
-from Crypto.PublicKey import RSA
-from Crypto.Cipher import PKCS1_OAEP, AES
-from Crypto.Random import get_random_bytes
 
 # --- Blueprint ---
 analyze_endpoint = Blueprint('analyze_endpoint', __name__)
@@ -29,17 +23,7 @@ APPS_SCRIPT_URL = os.environ.get('APPS_SCRIPT_URL')
 GMAIL_USER = os.environ.get('GMAIL_USER')
 GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD')
 
-# --- CRYPTO CONFIG ---
-SERVER_PRIVATE_KEY_PEM = os.environ.get('SERVER_PRIVATE_KEY')
-if not SERVER_PRIVATE_KEY_PEM:
-    raise ValueError("Biến môi trường SERVER_PRIVATE_KEY là bắt buộc.")
-try:
-    SERVER_PRIVATE_KEY = RSA.import_key(SERVER_PRIVATE_KEY_PEM)
-except Exception as e:
-    raise ValueError(f"Không thể import Private Key. Lỗi: {e}")
-
-
-# --- HÀM HỖ TRỢ (giữ nguyên) ---
+# --- HÀM HỖ TRỢ ---
 async def check_urls_safety_optimized(urls: list):
     if not SAFE_BROWSING_API_KEY or not urls: return []
     safe_browsing_url = f"https://safebrowsing.googleapis.com/v4/threatMatches:find?key={SAFE_BROWSING_API_KEY}"
@@ -54,6 +38,7 @@ async def check_urls_safety_optimized(urls: list):
         print(f"🔴 [Kiểm tra URL] Thất bại: {e}")
         return []
 
+# --- LUỒNG 1: GỌI LEO QUA GOOGLE APPS SCRIPT ---
 async def call_gas_db_ai(text: str):
     if not APPS_SCRIPT_URL:
         print("🔴 [Leo] Lỗi: Biến môi trường APPS_SCRIPT_URL chưa được thiết lập.")
@@ -73,8 +58,9 @@ async def call_gas_db_ai(text: str):
         print(f"🔴 [Leo] Lỗi kết nối đến GAS: {e}")
         return {"found": False, "reason": f"Ngoại lệ: {str(e)}"}
 
+# --- LUỒNG 2: ANNA-AI & VÒNG LẶP PHẢN HỒI ---
 def create_anna_ai_prompt(text: str) -> str:
-    return f'''
+    return f"""
 Bạn là hệ thống phân tích an toàn thông minh, chuyên phân tích các tin nhắn được gửi đến người dùng. Tên của bạn là Anna. Nhiệm vụ của bạn là phát hiện các nguy cơ, bao gồm cả những nguy cơ ẩn sau các từ ngữ đa nghĩa và ngữ cảnh phức tạp. 
 ⚡ Khi nào flag ("is_dangerous": true):
 1. Lừa đảo/phishing: Ưu đãi "quá tốt để tin", kêu gọi hành động khẩn cấp, yêu cầu cung cấp thông tin cá nhân.
@@ -95,7 +81,7 @@ Bạn phải cực kỳ nhạy cảm với những từ ngữ có vẻ trong sá
 - "score" (0-5, đánh dấu là 0 nếu an toàn)
 - "recommend" (string, đưa ra gợi ý cho người dùng)
 Sau đây là đoạn tin nhắn người dùng đã nhận được: {text}
-'''
+"""
 
 async def analyze_with_anna_ai_http(text: str):
     api_key = random.choice(GOOGLE_API_KEYS)
@@ -123,7 +109,6 @@ async def analyze_with_anna_ai_http(text: str):
         return {"error": "Phân tích với Anna thất bại do có ngoại lệ.", "status_code": 500}
 
 def _send_sync_email(original_text, analysis_result):
-    # ... (giữ nguyên hàm gửi email)
     print("➡️  [Email] Bắt đầu tiến trình gửi email trong luồng riêng...")
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
         print("🟡 [Email] Thiếu thông tin xác thực. Bỏ qua việc gửi email.")
@@ -133,8 +118,7 @@ def _send_sync_email(original_text, analysis_result):
     score = analysis_result.get("score", "N/A")
     subject = f"[CyberShield Report] Nguy hiểm mới: {detected_types} (Điểm: {score})"
 
-    body = f'''Một tin nhắn mới đã được Anna-AI phân tích và gắn cờ NGUY HIỂM.
-
+    body = f"""Một tin nhắn mới đã được Anna-AI phân tích và gắn cờ NGUY HIỂM.
 Vui lòng xem xét và bổ sung vào Google Sheets.
 ----------------------------------------------------------
 TIN NHẮN GỐC:
@@ -142,7 +126,7 @@ TIN NHẮN GỐC:
 ----------------------------------------------------------
 KẾT QUẢ PHÂN TÍCH:
 {json.dumps(analysis_result, indent=2, ensure_ascii=False)}
-'''
+"""
     to_email = 'duongpham18210@gmail.com'
     msg = MIMEText(body, 'plain', 'utf-8')
     msg['From'], msg['To'], msg['Subject'] = GMAIL_USER, to_email, subject
@@ -150,22 +134,24 @@ KẾT QUẢ PHÂN TÍCH:
     try:
         print(f"📦 [Email] Chuẩn bị gửi email. Tiêu đề: '{subject}'")
         server = smtplib.SMTP('smtp.gmail.com', 587)
+        print("🔌 [Email] Đã kết nối đến server SMTP.")
         server.starttls()
+        print("🔐 [Email] Đã bắt đầu TLS.")
         server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        print("👤 [Email] Đăng nhập thành công.")
         server.sendmail(GMAIL_USER, to_email, msg.as_string())
+        print("🚀 [Email] Lệnh gửi email đã được thực thi.")
         server.quit()
-        print("✅ [Email] Gửi email phản hồi thành công.")
+        print("✅ [Email] Gửi email phản hồi thành công và đã đóng kết nối.")
     except Exception as e:
         print(f"🔴 [Email] Gửi email phản hồi thất bại: {e}")
-
 
 # --- HÀM ĐIỀU PHỐI CHÍNH ---
 async def perform_full_analysis(text: str, urls: list):
     final_result = None
     is_new_case_by_anna = False
     
-    # Đã vô hiệu hóa để bảo mật, chỉ bật khi debug sâu
-    # print(f"📜 [Bắt đầu] Phân tích tin nhắn: '{text[:150]}...'" ) 
+    print(f"📜 [Bắt đầu] Phân tích tin nhắn: '{text[:150]}...'")
     print("➡️ [Luồng 1] Bắt đầu gọi Leo (GAS DB-AI)...")
     gas_result = await call_gas_db_ai(text)
 
@@ -202,81 +188,29 @@ async def perform_full_analysis(text: str, urls: list):
     gc.collect()
     return final_result
 
-# --- ENDPOINTS (ĐÃ CẬP NHẬT VÀ SỬA LỖI IV REUSE) ---
+# --- ENDPOINTS ---
 @analyze_endpoint.route('/analyze', methods=['POST'])
-async def analyze_text_encrypted():
+async def analyze_text():
     try:
-        request_data = request.get_json(silent=True)
-        if not request_data or 'encrypted_key' not in request_data or 'encrypted_data' not in request_data or 'iv' not in request_data:
-            return jsonify({'error': 'Yêu cầu không hợp lệ. Thiếu các trường mã hóa.'}), 400
-
-        print("--------------------\n📬 [Đầu vào] Nhận được yêu cầu đã mã hóa...")
-        print(f"🐛 DEBUG: Dữ liệu mã hóa nhận được: {request_data}")
-
-        # 1. Giải mã session key
-        try:
-            cipher_rsa = PKCS1_OAEP.new(SERVER_PRIVATE_KEY)
-            session_key = cipher_rsa.decrypt(base64.b64decode(request_data['encrypted_key']))
-        except Exception as e:
-            print(f"🔴 [Crypto] Lỗi giải mã session key: {e}")
-            return jsonify({'error': 'Không thể giải mã khóa phiên.'}), 400
-
-        # 2. Giải mã dữ liệu
-        try:
-            iv_from_client = base64.b64decode(request_data['iv'])
-            tag = base64.b64decode(request_data['tag'])
-            encrypted_data = base64.b64decode(request_data['encrypted_data'])
-            
-            cipher_aes = AES.new(session_key, AES.MODE_GCM, nonce=iv_from_client)
-            decrypted_payload_bytes = cipher_aes.decrypt_and_verify(encrypted_data, tag)
-            payload = json.loads(decrypted_payload_bytes.decode('utf-8'))
-            text = payload.get('text', '').strip()
-            urls = payload.get('urls', [])
-            print("✅ [Crypto] Giải mã yêu cầu thành công.")
-            print(f"🐛 DEBUG: Dữ liệu đã giải mã: {text}")
-        except (ValueError, KeyError) as e:
-            print(f"🔴 [Crypto] Lỗi giải mã dữ liệu hoặc xác thực thất bại: {e}")
-            return jsonify({'error': 'Dữ liệu không hợp lệ hoặc đã bị thay đổi.'}), 400
-
-        if not text:
-            return jsonify({'error': 'Không có văn bản để phân tích sau khi giải mã.'}), 400
-
-        # 3. Thực hiện phân tích như cũ
-        result = await perform_full_analysis(text[:3000], urls)
+        data = request.get_json(silent=True)
+        if not data or 'text' not in data: return jsonify({'error': 'Định dạng yêu cầu không hợp lệ'}), 400
+        text = data.get('text', '').strip()
         
-        # Chuẩn bị dữ liệu phản hồi
-        if 'error' in result:
-            response_data = {"status": "error", "message": result['error']}
-        else:
-            response_data = {"status": "success", "result": result}
+        print(f"--------------------\n📬 [Đầu vào] Nhận được tin nhắn: '{text[:100]}...'")
+        if not text: return jsonify({'error': 'Không có văn bản để phân tích'}), 400
         
-        print(f"🐛 DEBUG: Kết quả phân tích (chưa mã hóa): {response_data}")
-
-        # 4. Mã hóa kết quả trả về với IV MỚI
-        response_iv = get_random_bytes(12) # KHẮC PHỤC: Tạo IV mới cho mỗi lần mã hóa
-        cipher_aes_out = AES.new(session_key, AES.MODE_GCM, nonce=response_iv)
-        encrypted_response, response_tag = cipher_aes_out.encrypt_and_digest(json.dumps(response_data).encode('utf-8'))
-
-        response_payload = {
-            "iv": base64.b64encode(response_iv).decode('utf-8'),
-            "encrypted_response": base64.b64encode(encrypted_response).decode('utf-8'),
-            "tag": base64.b64encode(response_tag).decode('utf-8')
-        }
-        
-        print(f"🐛 DEBUG: Kết quả phản hồi (đã mã hóa): {response_payload}")
-        print("✅ [Phản hồi] Đã mã hóa và gửi kết quả về cho client.")
+        result = await perform_full_analysis(text[:3000], data.get('urls', []))
         
         if 'error' in result:
-             return jsonify(response_payload), result.get('status_code', 500)
-        else:
-             return jsonify(response_payload)
-
+            return jsonify({'error': result['error']}), result.get('status_code', 500)
+        
+        print("✅ [Phản hồi] Đã gửi kết quả về cho client.")
+        return jsonify({'result': result})
     except Exception as e:
-        print(f"🔴 [LỖI NGHIÊM TRỌNG] Lỗi server trong hàm analyze_text_encrypted: {e}")
+        print(f"🔴 [LỖI NGHIÊM TRỌNG] Lỗi server trong hàm analyze_text: {e}")
         gc.collect()
         return jsonify({'error': 'Lỗi nội bộ server'}), 500
 
-
 @analyze_endpoint.route('/health', methods=['GET'])
 async def health_check():
-    return jsonify({'status': 'Bình thường', 'architecture': 'Encrypted (IV Reuse Fixed) | GAS + Anna-AI'})
+    return jsonify({'status': 'Bình thường', 'architecture': 'GAS + Anna-AI (Phản hồi qua luồng & có bộ lọc)'})
