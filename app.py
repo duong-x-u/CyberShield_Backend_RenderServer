@@ -5,7 +5,6 @@ from flask_cors import CORS
 import os
 import logging
 from api.analyze import analyze_endpoint
-from api.webhook import webhook_blueprint 
 
 # Configure logging
 logging.basicConfig(
@@ -20,7 +19,6 @@ CORS(app)
 
 # Register blueprints
 app.register_blueprint(analyze_endpoint, url_prefix='/api')
-app.register_blueprint(webhook_blueprint, url_prefix='/api')
 
 @app.route('/')
 def home():
