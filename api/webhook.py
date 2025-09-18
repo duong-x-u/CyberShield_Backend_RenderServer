@@ -1,16 +1,10 @@
-# Tên file: api/webhook.py
-
 import os
 import aiohttp
 from flask import Blueprint, request
-
-# Quan trọng: Import hàm phân tích cốt lõi từ file analyze.py
 from .analyze import perform_full_analysis
 
-# Đặt tên cho blueprint
 webhook_blueprint = Blueprint('webhook_blueprint', __name__)
 
-# Lấy các token từ biến môi trường
 PAGE_ACCESS_TOKEN = os.environ.get('PAGE_ACCESS_TOKEN')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN')
 
@@ -98,7 +92,7 @@ async def send_messenger_reply(recipient_id, analysis_result):
         "messaging_type": "RESPONSE"
     }
 
-    graph_api_url = "https://graph.facebook.com/v19.0/me/messages" # Nên dùng phiên bản API mới nhất
+    graph_api_url = "https://graph.facebook.com/v23.0/me/messages" # Nên dùng phiên bản API mới nhất
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -109,4 +103,5 @@ async def send_messenger_reply(recipient_id, analysis_result):
                     error_data = await resp.text()
                     print(f"🔴 [Messenger] Gửi tin nhắn thất bại. Trạng thái: {resp.status}, Lỗi: {error_data}")
     except Exception as e:
+
         print(f"🔴 [Messenger] Lỗi ngoại lệ khi gửi tin nhắn: {e}")
