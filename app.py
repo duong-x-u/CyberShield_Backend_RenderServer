@@ -24,13 +24,13 @@ app.register_blueprint(analyze_endpoint, url_prefix='/api')
 def home():
     """Home endpoint - cyberpunk gaming vibe"""
     return jsonify({
-        'banner': '⚡ WELCOME TO ARENA OF CYBERSHIELD ⚡',
+        'banner': '⚡ ĐÂY LÀ SERVER THỬ NGHIỆM NHỮNG TÍNH NĂNG/CẢI TIẾN MỚI CỦA CYBERSHIELD ⚡',
         'status': '🟢 Sẵn Sàng',
         'version': '1.0.0',
         'server': '0xCyb3r-Sh13ld',
         'message': [
-    "Chào mừng đến với Server của Cyber Shield",
-    "Kẻ địch sẽ xuất trận sau 5 giây"]
+    "This is the tester server of Cyber Shield",
+    "This server may not be working properly."]
 
 
     })
