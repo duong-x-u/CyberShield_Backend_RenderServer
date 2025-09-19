@@ -23,6 +23,12 @@ services:
       # --- TUỲ CHỌN: Nếu bạn dùng tính năng kiểm tra URL ---
       - key: SAFE_BROWSING_API_KEY
         sync: false # API key cho Google Safe Browsing
+      - key: FB_VERIFY_TOKEN
+        sync: false # Dùng để xác thực webhook với Facebook
+      - key: FB_APP_SECRET
+        sync: false # App secret của ứng dụng Facebook
+      - key: FB_PAGE_ACCESS_TOKEN
+        sync: false # Token truy cập Trang (Page)
     healthCheckPath: /health
     autoDeploy: true
     branch: main

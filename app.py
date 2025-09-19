@@ -5,6 +5,7 @@ from flask_cors import CORS
 import os
 import logging
 from api.analyze import analyze_endpoint
+from api.webhook import webhook_blueprint 
 
 # Configure logging
 logging.basicConfig(
@@ -19,20 +20,19 @@ CORS(app)
 
 # Register blueprints
 app.register_blueprint(analyze_endpoint, url_prefix='/api')
+app.register_blueprint(webhook_blueprint, url_prefix='/api')
 
 @app.route('/')
 def home():
     """Home endpoint - cyberpunk gaming vibe"""
     return jsonify({
-        'banner': '⚡ ĐÂY LÀ SERVER THỬ NGHIỆM NHỮNG TÍNH NĂNG/CẢI TIẾN MỚI CỦA CYBERSHIELD ⚡',
+        'banner': '⚡ WELCOME TO ARENA OF CYBERSHIELD ⚡',
         'status': '🟢 Sẵn Sàng',
         'version': '1.0.0',
         'server': '0xCyb3r-Sh13ld',
         'message': [
-    "This is the tester server of Cyber Shield",
-    "This server may not be working properly."]
-
-
+    "Chào mừng đến với Server của Cyber Shield",
+    "Kẻ địch sẽ xuất trận sau 5 giây"]
     })
 
 
