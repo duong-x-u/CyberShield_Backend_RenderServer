@@ -5,7 +5,7 @@ from flask_cors import CORS
 import os
 import logging
 from api.analyze import analyze_endpoint
-from api.webhook import webhook_blueprint 
+from webhook import webhook_blueprint  # Import Blueprint từ file webhook.py
 
 # Configure logging
 logging.basicConfig(
@@ -20,7 +20,7 @@ CORS(app)
 
 # Register blueprints
 app.register_blueprint(analyze_endpoint, url_prefix='/api')
-app.register_blueprint(webhook_blueprint, url_prefix='/api')
+app.register_blueprint(webhook_blueprint, url_prefix='/messenger') # Đăng ký Blueprint của webhook
 
 @app.route('/')
 def home():
@@ -35,7 +35,6 @@ def home():
     "Kẻ địch sẽ xuất trận sau 5 giây"]
     })
 
-
 @app.route('/health')
 def health_check():
     return jsonify({
@@ -47,9 +46,6 @@ def health_check():
         'note': 'Tế đàn còn ổn'
     })
 
-
-
-
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({'error': '❌ 404: Page Not Found ://'}), 404
@@ -58,7 +54,6 @@ def not_found(error):
 def internal_error(error):
     logger.error(f"Internal error: {str(error)}")
     return jsonify({'error': '💥 500: Quay về phòng thủ. Tế đàn bị tấn công'}), 500
-
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
