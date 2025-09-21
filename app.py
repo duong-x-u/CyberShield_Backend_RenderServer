@@ -41,8 +41,8 @@ login_manager.login_view = "admin_blueprint.login"
 
 # --- Đăng ký tất cả các Blueprints ---
 app.register_blueprint(analyze_endpoint, url_prefix='/api')
-app.register_blueprint(webhook_blueprint) # Webhook nên ở root để Facebook dễ tìm
-app.register_blueprint(admin_blueprint, url_prefix='/admin') # Giao diện admin có tiền tố /admin
+app.register_blueprint(webhook_blueprint, url_prefix='/messenger') 
+app.register_blueprint(admin_blueprint, url_prefix='/admin')
 
 # --- Các Route Cơ bản và Error Handlers (Giữ nguyên) ---
 
