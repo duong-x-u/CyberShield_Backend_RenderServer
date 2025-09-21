@@ -20,7 +20,7 @@ class User(UserMixin):
 # TẠO TÀI KHOẢN ADMIN CỦA BẠN Ở ĐÂY
 # Thay "admin" và "your_super_secret_password" bằng thông tin của bạn
 users = {
-    "1": User(id="1", username="admin", password="admin")
+    "1": User(id="1", username="admin", password="admin"),
     "2": User(id="2", username="DuongPham", password="NKer")
 }
 user_by_username = {user.username: user for user in users.values()}
@@ -89,4 +89,5 @@ def test_analyzer():
 @login_required
 def add_to_leo():
     # TODO: Lấy dữ liệu từ form, gọi API của Google Apps Script
+
     return jsonify({"status": "Added successfully (Not implemented yet)"})
