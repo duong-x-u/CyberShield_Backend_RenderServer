@@ -1,0 +1,48 @@
+/* Basic Reset & Dark Theme */
+body {
+    background-color: #1a1a2e;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 20px;
+}
+
+/* Login Page */
+.login-container {
+    max-width: 400px;
+    margin: 100px auto;
+    padding: 40px;
+    background-color: #16213e;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+.login-container h1 { color: #0f3460; }
+.login-container input {
+    width: 90%; padding: 12px; margin-bottom: 15px; border-radius: 4px; border: 1px solid #0f3460; background-color: #e0e0e0;
+}
+.login-container button {
+    width: 95%; padding: 12px; background-color: #533483; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;
+}
+.login-container button:hover { background-color: #e94560; }
+.error { color: #ff6b6b; margin-top: 15px; }
+
+/* Dashboard */
+header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #0f3460; padding-bottom: 10px; }
+.logout-btn { background-color: #e94560; color: white; padding: 8px 15px; text-decoration: none; border-radius: 5px; }
+.main-content { display: flex; gap: 20px; margin-top: 20px; }
+.panel { background-color: #16213e; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
+.status-panel { flex: 1; }
+.control-panel { flex: 2; }
+.control-section { margin-bottom: 20px; }
+.control-section h3 { border-bottom: 1px solid #0f3460; padding-bottom: 5px; }
+.control-section input, .control-section textarea { width: 95%; padding: 10px; margin-bottom: 10px; background-color: #e0e0e0; border: 1px solid #0f3460; border-radius: 4px; }
+.control-section textarea { height: 80px; }
+.control-section button { padding: 10px 15px; background-color: #533483; color: white; border: none; border-radius: 4px; cursor: pointer; }
+.control-section button:hover { background-color: #e94560; }
+#test-result { background-color: #1a1a2e; padding: 10px; border-radius: 4px; min-height: 40px; color: #a2a2a2; }
+.log-panel { margin-top: 20px; }
+#log-container { background-color: #000; padding: 15px; border-radius: 5px; height: 300px; overflow-y: scroll; font-family: 'Courier New', Courier, monospace; font-size: 14px; }
+#log-content { margin: 0; }
+.status-ok { color: #2ecc71; }
+.status-unknown { color: #95a5a6; }

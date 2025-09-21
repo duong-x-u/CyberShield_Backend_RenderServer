@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyber Shield - Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('admin_blueprint.static', filename='admin_style.css') }}">
+</head>
+<body>
+    <header>
+        <h1>🛡️ Cyber Shield - Admin Dashboard</h1>
+        <a href="{{ url_for('admin_blueprint.logout') }}" class="logout-btn">Logout</a>
+    </header>
+    <div class="main-content">
+        <div class="panel status-panel">
+            <h2>SYSTEM STATUS</h2>
+            <p><strong>Server Status:</strong> <span class="status-ok">🟢 ONLINE</span></p>
+            <p><strong>Facebook API:</strong> <span class="status-ok">🟢 CONNECTED</span></p>
+            <p><strong>Google AI API:</strong> <span class="status-ok">🟢 OPERATIONAL</span></p>
+            <p><strong>"Leo" DB (GAS):</strong> <span class="status-unknown">⚪ PENDING</span></p>
+            <hr>
+            <h3>KEY METRICS</h3>
+            <p><strong>Total Analyzed:</strong> <span id="metric-total">...</span></p>
+            <p><strong>Dangerous Found:</strong> <span id="metric-dangerous">...</span></p>
+        </div>
+
+        <div class="panel control-panel">
+            <h2>CONTROL & ACTIONS</h2>
+            <div class="control-section">
+                <h3>Test Analyzer Engine</h3>
+                <input type="text" id="test-text" placeholder="Nhập tin nhắn cần test...">
+                <button id="test-btn">Analyze</button>
+                <pre id="test-result">Result will appear here...</pre>
+            </div>
+            <div class="control-section">
+                <h3>Add to "Leo" Database</h3>
+                <textarea id="leo-pattern" placeholder="Dán mẫu tin nhắn lừa đảo mới vào đây."></textarea>
+                <input type="text" id="leo-reason" placeholder="Lý do (vd: Lừa đảo giả mạo giao hàng)">
+                <button id="leo-add-btn">Add to Database</button>
+            </div>
+        </div>
+    </div>
+    <div class="log-panel">
+        <h2>REAL-TIME SERVER LOG</h2>
+        <div id="log-container">
+            <pre id="log-content">Loading logs...</pre>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('admin_blueprint.static', filename='admin_script.js') }}"></script>
+</body>
+</html>
