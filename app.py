@@ -1,86 +1,87 @@
-from dotenv import load_dotenv
-load_dotenv()
+# admin.py (ĐÃ SỬA LỖI SYNTAX)
 
 import os
-import logging
-from logging.handlers import RotatingFileHandler
-from flask import Flask, jsonify
-from flask_cors import CORS
-from flask_login import LoginManager
+from flask import Blueprint, render_template, request, redirect, url_for, jsonify, flash
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required
 
-# --- Import các Blueprints của bạn ---
-from api.analyze import analyze_endpoint
-from webhook import webhook_blueprint
-from admin import admin_blueprint, login_manager  
+# --- Cấu hình Blueprint ---
+admin_blueprint = Blueprint('admin_blueprint', __name__,
+                            template_folder='templates',
+                            static_folder='static')
 
-# --- Cấu hình Logging Nâng cao ---
-# Ghi log ra cả console (cho Render xem) và file (cho dashboard đọc)
-LOG_FILE = "cybershield.log"
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-    handlers=[
-        # Giới hạn file log ở 10MB, giữ lại 5 file cũ
-        RotatingFileHandler(LOG_FILE, maxBytes=10485760, backupCount=5, encoding='utf-8'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
+# --- Thiết lập User Model ---
+# Class này định nghĩa cấu trúc của một User
+class User(UserMixin):
+    def __init__(self, id, username, password):
+        self.id = id
+        self.username = username
+        self.password = password
 
-# --- Khởi tạo Ứng dụng Flask ---
-app = Flask(__name__)
-# SECRET_KEY là bắt buộc để Flask-Login và sessions hoạt động an toàn
-app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', os.urandom(24))
-CORS(app)
+# <<< SỬA LẠI: ĐƯA KHỐI NÀY RA NGOÀI, NGANG HÀNG VỚI CLASS >>>
+# Đọc thông tin đăng nhập từ biến môi trường để đảm bảo an toàn
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
 
-# --- Khởi tạo và Gắn Flask-Login vào App ---
-login_manager.init_app(app)
-# Nếu người dùng chưa đăng nhập và cố truy cập trang cần login,
-# họ sẽ bị chuyển hướng đến trang này.
+if not ADMIN_PASSWORD:
+    # Dừng server nếu mật khẩu admin chưa được cài đặt
+    raise ValueError("Biến môi trường ADMIN_PASSWORD chưa được thiết lập trên Render!")
+
+# Tạo user duy nhất từ các biến môi trường
+users = {
+    "1": User(id="1", username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
+}
+user_by_username = {user.username: user for user in users.values()}
+# <<< KẾT THÚC PHẦN SỬA LỖI >>>
+
+
+# --- Cấu hình Flask-Login ---
+login_manager = LoginManager()
 login_manager.login_view = "admin_blueprint.login"
 
-# --- Đăng ký tất cả các Blueprints ---
-app.register_blueprint(analyze_endpoint, url_prefix='/api')
-app.register_blueprint(webhook_blueprint, url_prefix='/messenger') 
-app.register_blueprint(admin_blueprint, url_prefix='/admin')
+@login_manager.user_loader
+def load_user(user_id):
+    return users.get(user_id)
 
-# --- Các Route Cơ bản và Error Handlers (Giữ nguyên) ---
+# --- Các Route cho Trang Admin ---
 
-@app.route('/')
-def home():
-    """Home endpoint - cyberpunk gaming vibe"""
-    return jsonify({
-        'banner': '⚡ WELCOME TO ARENA OF CYBERSHIELD ⚡',
-        'status': '🟢 Sẵn Sàng',
-        'version': '1.0.0',
-        'server': '0xCyb3r-Sh13ld',
-        'message': [
-            "Chào mừng đến với Server của Cyber Shield",
-            "Kẻ địch sẽ xuất trận sau 5 giây"
-        ]
-    })
+@admin_blueprint.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        user = user_by_username.get(username)
+        # So sánh password an toàn
+        if user and user.password == password:
+            login_user(user)
+            return redirect(url_for("admin_blueprint.dashboard"))
+        else:
+            flash("Tên đăng nhập hoặc mật khẩu không đúng.", "error")
+    return render_template("admin_login.html")
 
-@app.route('/health')
-def health_check():
-    return jsonify({
-        'status': '🟢 Systems Nominal',
-        'hp': '100/100',
-        'mana': '∞',
-        'latency_ms': 5,
-        'service': 'cybershield-backend',
-        'note': 'Tế đàn còn ổn'
-    })
+@admin_blueprint.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("admin_blueprint.login"))
 
-@app.errorhandler(404)
-def not_found(error):
-    return jsonify({'error': '❌ 404: Page Not Found ://'}), 404
+@admin_blueprint.route("/dashboard")
+@login_required
+def dashboard():
+    return render_template("admin_dashboard.html")
 
-@app.errorhandler(500)
-def internal_error(error):
-    logger.error(f"Internal error: {str(error)}")
-    return jsonify({'error': '💥 500: Quay về phòng thủ. Tế đàn bị tấn công'}), 500
+# --- Các API cho Dashboard ---
 
-# --- Chạy Server ---
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+@admin_blueprint.route("/api/logs")
+@login_required
+def get_logs():
+    LOG_FILE = "cybershield.log"
+    try:
+        with open(LOG_FILE, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            last_50_lines = lines[-50:]
+            # Đảo ngược lại để dòng mới nhất ở trên cùng
+            return jsonify({"logs": last_50_lines[::-1]})
+    except FileNotFoundError:
+        return jsonify({"logs": ["Log file not found yet."]})
+    except Exception as e:
+        return jsonify({"logs": [f"Error reading log file: {str(e)}"]}), 500
