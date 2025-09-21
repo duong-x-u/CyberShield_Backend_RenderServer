@@ -74,13 +74,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- User loader cho Flask-Login ---
-@login_manager.user_loader
-def load_user(user_id):
-    # TODO: Implement user loading logic
-    # Ví dụ: return User.get(user_id)
-    return None
-
 # --- Đăng ký các Blueprints nếu import thành công ---
 if analyze_endpoint:
     app.register_blueprint(analyze_endpoint, url_prefix='/api')
