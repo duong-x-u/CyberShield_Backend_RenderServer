@@ -9,7 +9,7 @@ from flask_cors import CORS
 from flask_login import LoginManager
 
 # --- Khởi tạo Ứng dụng Flask trước khi import blueprints ---
-app = Flask(__name__)
+app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', os.urandom(24))
 CORS(app)
 
