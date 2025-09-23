@@ -26,13 +26,17 @@ GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD')
 # --- HÀM HỖ TRỢ ---
 async def check_urls_safety_optimized(urls: list):
     if not SAFE_BROWSING_API_KEY or not urls: return []
+    print("➡️  [Kiểm tra URL] Bắt đầu kiểm tra URL với Google Safe Browsing...")
     safe_browsing_url = f"https://safebrowsing.googleapis.com/v4/threatMatches:find?key={SAFE_BROWSING_API_KEY}"
     payload = {"threatInfo": {"threatTypes": ["MALWARE", "SOCIAL_ENGINEERING"], "platformTypes": ["ANY_PLATFORM"], "threatEntryTypes": ["URL"], "threatEntries": [{"url": url} for url in urls[:5]]}}
     try:
         timeout = aiohttp.ClientTimeout(total=15)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(safe_browsing_url, json=payload) as resp:
-                if resp.status == 200: return (await resp.json()).get("matches", [])
+                if resp.status == 200:
+                    matches = (await resp.json()).get("matches", [])
+                    print(f"✅ [Kiểm tra URL] Hoàn tất. Tìm thấy {len(matches)} kết quả không an toàn.")
+                    return matches
                 return []
     except Exception as e:
         print(f"🔴 [Kiểm tra URL] Thất bại: {e}")
@@ -49,6 +53,7 @@ async def call_gas_db_ai(text: str):
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(APPS_SCRIPT_URL, json=payload) as resp:
                 if resp.status == 200:
+                    print("✅ [Leo] Nhận được phản hồi thành công từ GAS.")
                     return await resp.json()
                 else:
                     error_text = await resp.text()
@@ -58,6 +63,7 @@ async def call_gas_db_ai(text: str):
         print(f"🔴 [Leo] Lỗi kết nối đến GAS: {e}")
         return {"found": False, "reason": f"Ngoại lệ: {str(e)}"}
 
+# --- LUỒNG 2: ANNA-AI & VÒNG LẶP PHẢN HỒI ---
 def create_anna_ai_prompt(text: str) -> str:
     return f"""
 Bạn là Anna, một chuyên gia phân tích an ninh mạng với trí tuệ cảm xúc cao, chuyên đánh giá các tin nhắn Tiếng Việt. Sứ mệnh của bạn là bảo vệ người dùng khỏi nguy hiểm thực sự, đồng thời phải hiểu rõ sự phức tạp trong giao tiếp của con người để tránh báo động sai.
@@ -66,7 +72,6 @@ Hãy tuân thủ quy trình tư duy 3 bước sau đây:
 
 ---
 **BƯỚC 1: ĐÁNH GIÁ MỨC ĐỘ RÕ RÀNG CỦA TIN NHẮN**
-
 - **Câu hỏi:** "Tin nhắn này có đủ thông tin để đưa ra kết luận chắc chắn không?"
 - **Hành động:**
     - **NẾU** tin nhắn quá ngắn (dưới 4 từ), viết tắt ("R á", "vào dc ch"), hoặc chỉ chứa biểu tượng cảm xúc => **DỪNG LẠI.** Kết luận ngay là **AN TOÀN (is_dangerous: false, score: 0)** với lý do "Tin nhắn quá ngắn và thiếu ngữ cảnh để đánh giá." Đừng cố suy diễn thêm.
@@ -74,7 +79,6 @@ Hãy tuân thủ quy trình tư duy 3 bước sau đây:
 
 ---
 **BƯỚC 2: PHÂN TÍCH Ý ĐỊNH DỰA TRÊN NGỮ CẢNH**
-
 - **Câu hỏi:** "Ý định thực sự đằng sau câu chữ này là gì? Đây là một cuộc trò chuyện giữa người lạ hay bạn bè?"
 - **Hành động:**
     - **ƯU TIÊN GIẢ ĐỊNH BẠN BÈ:** Hãy luôn bắt đầu với giả định rằng đây là cuộc trò chuyện giữa những người quen biết. Trong ngữ cảnh này, các từ như "mày", "tao", "khùng", "hâm", "giỡn" thường là **trêu đùa và AN TOÀN**. Chỉ gắn cờ nguy hiểm nếu nó đi kèm với một lời đe dọa trực tiếp và rõ ràng.
@@ -85,7 +89,6 @@ Hãy tuân thủ quy trình tư duy 3 bước sau đây:
 
 ---
 **BƯỚC 3: ĐƯA RA KẾT LUẬN CUỐI CÙNG**
-
 - **Hành động:** Dựa trên phân tích từ Bước 1 và 2, hãy tạo ra đối tượng JSON.
     - **Nếu an toàn:** `is_dangerous` phải là `false`, `score` phải là `0`.
     - **Nếu nguy hiểm:** `is_dangerous` phải là `true`, `score` phải từ 1-5, và `reason`, `recommend` phải rõ ràng, súc tích.
@@ -112,11 +115,17 @@ async def analyze_with_anna_ai_http(text: str):
     try:
         timeout = aiohttp.ClientTimeout(total=25)
         async with aiohttp.ClientSession(timeout=timeout) as session:
+            print(f"➡️  [Anna] Đang gửi yêu cầu phân tích tới Google AI...")
             async with session.post(gemini_url, json=payload) as resp:
                 if resp.status == 200:
                     response_json = await resp.json()
+                    if not response_json.get('candidates'):
+                        print(f"🔴 [Anna] Lỗi! Phản hồi không có 'candidates'. Bị bộ lọc an toàn chặn. Chi tiết: {response_json}")
+                        return {'error': 'BLOCKED_BY_GOOGLE', 'message': 'Bị bộ lọc an toàn của Google chặn.'}
+                    
                     json_text = response_json['candidates'][0]['content']['parts'][0]['text']
                     result = json.loads(json_text)
+                    print("✅ [Anna] Phân tích thành công.")
                     return result
                 else:
                     error_text = await resp.text()
@@ -164,7 +173,7 @@ KẾT QUẢ PHÂN TÍCH:
     except Exception as e:
         print(f"🔴 [Email] Gửi email phản hồi thất bại: {e}")
 
-# --- HÀM ĐIỀU PHỐI CHÍNH ---
+# --- HÀM ĐIỀU PHỐI CHÍNH (ĐÃ NÂNG CẤP) ---
 async def perform_full_analysis(text: str, urls: list):
     final_result = None
     is_new_case_by_anna = False
@@ -173,14 +182,19 @@ async def perform_full_analysis(text: str, urls: list):
     print("➡️ [Luồng 1] Bắt đầu gọi Leo (GAS DB-AI)...")
     gas_result = await call_gas_db_ai(text)
 
+    # <<< LOGIC MỚI: XỬ LÝ SỔ TRẮNG + SỔ ĐEN >>>
     if gas_result and gas_result.get("found"):
-        print("✅ [Luồng 1] Thành công. Tìm thấy kết quả trùng khớp trong CSDL.")
-        final_result = gas_result.get("data")
+        if gas_result.get("is_safe"):
+            print("✅ [Luồng 1] Thành công. Tìm thấy trong danh sách an toàn (Whitelist).")
+            final_result = gas_result.get("data")
+        else:
+            print("✅ [Luồng 1] Thành công. Tìm thấy trong danh sách nguy hiểm (Blacklist).")
+            final_result = gas_result.get("data")
+        
         print(f"📄 [Kết quả của Leo] Trả về dữ liệu từ cache: {json.dumps(final_result, ensure_ascii=False)}")
     else:
-        reason = "Không xác định"
-        if gas_result:
-            reason = gas_result.get('reason', 'Không tìm thấy trong CSDL')
+        # Nếu không tìm thấy trong cả 2 danh sách, mới gọi Anna
+        reason = gas_result.get('reason', 'Không tìm thấy trong CSDL') if gas_result else "Không xác định"
         print(f"🟡 [Luồng 1] Thất bại (Lý do: {reason}). Bắt đầu Luồng 2: Anna-AI...")
         
         final_result = await analyze_with_anna_ai_http(text)
@@ -190,10 +204,12 @@ async def perform_full_analysis(text: str, urls: list):
             return final_result
             
         is_new_case_by_anna = True 
+    # <<< KẾT THÚC LOGIC MỚI >>>
 
     if urls:
         url_matches = await check_urls_safety_optimized(urls)
         if url_matches:
+            print(f"⚠️ [Phân tích URL] Phát hiện {len(url_matches)} URL không an toàn! Cập nhật kết quả cuối cùng.")
             final_result.update({'url_analysis': url_matches, 'is_dangerous': True, 'score': max(final_result.get('score', 0), 4), 'reason': (final_result.get('reason', '') + " + Các URL không an toàn")[:100]})
 
     if is_new_case_by_anna and final_result.get("is_dangerous"):
@@ -204,6 +220,7 @@ async def perform_full_analysis(text: str, urls: list):
         print("➡️ [Phản hồi] Phát hiện ca an toàn mới. Bỏ qua việc gửi email.")
 
     gc.collect()
+    print(f"🏁 [Kết thúc] Phân tích hoàn tất cho tin nhắn: '{text[:50]}...'")
     return final_result
 
 # --- ENDPOINTS ---
@@ -225,10 +242,10 @@ async def analyze_text():
         print("✅ [Phản hồi] Đã gửi kết quả về cho client.")
         return jsonify({'result': result})
     except Exception as e:
-        print(f"🔴 [LỖI NGHIÊM TRỌNG] Lỗi server trong hàm analyze_text: {e}")
+        print(f"🔴 [LỖI NGHIÊM TRỌNG] Lỗi server trong hàm analyze_text: {e}", exc_info=True)
         gc.collect()
         return jsonify({'error': 'Lỗi nội bộ server'}), 500
 
 @analyze_endpoint.route('/health', methods=['GET'])
 async def health_check():
-    return jsonify({'status': 'Bình thường', 'architecture': 'GAS + Anna-AI (Phản hồi qua luồng & có bộ lọc)'})
+    return jsonify({'status': 'Bình thường', 'architecture': 'Whitelist + Blacklist + Anna-AI'})
