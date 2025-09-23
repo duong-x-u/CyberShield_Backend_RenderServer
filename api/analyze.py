@@ -37,12 +37,13 @@ async def check_urls_safety_optimized(urls: list):
                     matches = (await resp.json()).get("matches", [])
                     print(f"✅ [Kiểm tra URL] Hoàn tất. Tìm thấy {len(matches)} kết quả không an toàn.")
                     return matches
+                print(f"🟡 [Kiểm tra URL] API trả về trạng thái {resp.status}.")
                 return []
     except Exception as e:
         print(f"🔴 [Kiểm tra URL] Thất bại: {e}")
         return []
 
-# --- LUỒNG 1: GỌI LEO QUA GOOGLE APPS SCRIPT ---
+# --- LUỒNG 1: GỌI "ĐIỆP VIÊN LEO" QUA GOOGLE APPS SCRIPT ---
 async def call_gas_db_ai(text: str):
     if not APPS_SCRIPT_URL:
         print("🔴 [Leo] Lỗi: Biến môi trường APPS_SCRIPT_URL chưa được thiết lập.")
@@ -63,40 +64,41 @@ async def call_gas_db_ai(text: str):
         print(f"🔴 [Leo] Lỗi kết nối đến GAS: {e}")
         return {"found": False, "reason": f"Ngoại lệ: {str(e)}"}
 
-# --- LUỒNG 2: ANNA-AI & VÒNG LẶP PHẢN HỒI ---
-def create_anna_ai_prompt(text: str) -> str:
+# --- LUỒNG 2: ANNA-AI & BỘ NÃO TĂNG CƯỜNG ---
+def create_anna_ai_prompt(text: str, context_hint: str = None):
+    # Xây dựng phần gợi ý, chỉ thêm vào prompt nếu có
+    hint_section = ""
+    if context_hint:
+        hint_section = f"""
+---
+**THÔNG TIN TÌNH BÁO BỔ SUNG (QUAN TRỌNG):**
+Hệ thống Leo đã cung cấp một gợi ý về bối cảnh của tin nhắn này. Hãy ưu tiên thông tin này khi phân tích:
+"{context_hint}"
+---
+"""
+    # Ghép phần gợi ý vào prompt chính
     return f"""
-Bạn là Anna, một chuyên gia phân tích an ninh mạng với trí tuệ cảm xúc cao, chuyên đánh giá các tin nhắn Tiếng Việt. Sứ mệnh của bạn là bảo vệ người dùng khỏi nguy hiểm thực sự, đồng thời phải hiểu rõ sự phức tạp trong giao tiếp của con người để tránh báo động sai.
-
+Bạn là Anna, một chuyên gia phân tích an ninh mạng với trí tuệ cảm xúc cao, chuyên đánh giá các tin nhắn Tiếng Việt.
+{hint_section}
 Hãy tuân thủ quy trình tư duy 3 bước sau đây:
-
 ---
 **BƯỚC 1: ĐÁNH GIÁ MỨC ĐỘ RÕ RÀNG CỦA TIN NHẮN**
-- **Câu hỏi:** "Tin nhắn này có đủ thông tin để đưa ra kết luận chắc chắn không?"
-- **Hành động:**
-    - **NẾU** tin nhắn quá ngắn (dưới 4 từ), viết tắt ("R á", "vào dc ch"), hoặc chỉ chứa biểu tượng cảm xúc => **DỪNG LẠI.** Kết luận ngay là **AN TOÀN (is_dangerous: false, score: 0)** với lý do "Tin nhắn quá ngắn và thiếu ngữ cảnh để đánh giá." Đừng cố suy diễn thêm.
-    - **NẾU** tin nhắn đủ dài và rõ nghĩa, chuyển sang Bước 2.
-
+- **NẾU** tin nhắn quá ngắn (dưới 4 từ) VÀ không có thông tin tình báo bổ sung, hãy kết luận là AN TOÀN.
+- **NẾU** tin nhắn đủ dài hoặc có thông tin tình báo, chuyển sang Bước 2.
 ---
 **BƯỚC 2: PHÂN TÍCH Ý ĐỊNH DỰA TRÊN NGỮ CẢNH**
-- **Câu hỏi:** "Ý định thực sự đằng sau câu chữ này là gì? Đây là một cuộc trò chuyện giữa người lạ hay bạn bè?"
-- **Hành động:**
-    - **ƯU TIÊN GIẢ ĐỊNH BẠN BÈ:** Hãy luôn bắt đầu với giả định rằng đây là cuộc trò chuyện giữa những người quen biết. Trong ngữ cảnh này, các từ như "mày", "tao", "khùng", "hâm", "giỡn" thường là **trêu đùa và AN TOÀN**. Chỉ gắn cờ nguy hiểm nếu nó đi kèm với một lời đe dọa trực tiếp và rõ ràng.
-        - *Ví dụ an toàn:* "m giỡn vs cj m à?" -> Chỉ là cách nói thân mật.
-        - *Ví dụ nguy hiểm:* "m mà giỡn nữa thì đừng trách tao ác." -> Có đe dọa hậu quả.
-    - **NHẬN DIỆN LỪA ĐẢO:** Tìm kiếm các "cờ đỏ" kinh điển: Ưu đãi phi thực tế, link lạ, tạo áp lực thời gian, yêu cầu thông tin.
-    - **NHẬN DIỆN XÚC PHẠM NẶNG:** Tìm kiếm các từ ngữ miệt thị, phân biệt đối xử, thô tục một cách rõ ràng và không thể biện minh bằng ngữ cảnh bạn bè. ("câm mồm", "chết đi").
-
+- **ƯU TIÊN GIẢ ĐỊNH BẠN BÈ:** Giả định đây là cuộc trò chuyện giữa người quen. Các từ như "mày", "tao", "khùng", "hâm", "giỡn" thường là **trêu đùa và AN TOÀN**.
+- **PHÂN TÍCH LINK THÔNG MINH:** Link từ TikTok, YouTube thường là để giải trí. Hãy tập trung vào ngữ cảnh đi kèm.
+- **NHẬN DIỆN LỪA ĐẢO & XÚC PHẠM NẶNG:** Tìm kiếm các "cờ đỏ" rõ ràng.
 ---
 **BƯỚC 3: ĐƯA RA KẾT LUẬN CUỐI CÙNG**
-- **Hành động:** Dựa trên phân tích từ Bước 1 và 2, hãy tạo ra đối tượng JSON.
+Dựa trên phân tích, tạo ra đối tượng JSON.
     - **Nếu an toàn:** `is_dangerous` phải là `false`, `score` phải là `0`.
     - **Nếu nguy hiểm:** `is_dangerous` phải là `true`, `score` phải từ 1-5, và `reason`, `recommend` phải rõ ràng, súc tích.
-
 ---
 **Output JSON (Tiếng Việt):**
 - "is_dangerous": (boolean)
-- "reason": (string, giải thích ngắn gọn logic của bạn)
+- "reason": (string)
 - "types": (string)
 - "score": (0-5)
 - "recommend": (string)
@@ -104,10 +106,13 @@ Hãy tuân thủ quy trình tư duy 3 bước sau đây:
 **TIN NHẮN CẦN PHÂN TÍCH:** "{text}"
 """
 
-async def analyze_with_anna_ai_http(text: str):
+async def analyze_with_anna_ai_http(text: str, context_hint: str = None):
     api_key = random.choice(GOOGLE_API_KEYS)
     gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
-    prompt = create_anna_ai_prompt(text[:2500])
+    
+    # Gọi hàm tạo prompt với gợi ý bối cảnh (nếu có)
+    prompt = create_anna_ai_prompt(text[:2500], context_hint)
+    
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": { "temperature": 0.2, "maxOutputTokens": 400, "responseMimeType": "application/json" }
@@ -132,7 +137,7 @@ async def analyze_with_anna_ai_http(text: str):
                     print(f"🔴 [Anna] Lỗi HTTP! Trạng thái: {resp.status}, Phản hồi: {error_text}")
                     return {"error": f"Lỗi API Anna {resp.status}", "status_code": 500}
     except Exception as e:
-        print(f"🔴 [Anna] Lỗi ngoại lệ khi gọi HTTP: {e}")
+        print(f"🔴 [Anna] Lỗi ngoại lệ khi gọi HTTP: {e}", exc_info=True)
         return {"error": "Phân tích với Anna thất bại do có ngoại lệ.", "status_code": 500}
 
 def _send_sync_email(original_text, analysis_result):
@@ -173,39 +178,47 @@ KẾT QUẢ PHÂN TÍCH:
     except Exception as e:
         print(f"🔴 [Email] Gửi email phản hồi thất bại: {e}")
 
-# --- HÀM ĐIỀU PHỐI CHÍNH (ĐÃ NÂNG CẤP) ---
+# --- HÀM ĐIỀU PHỐI CHÍNH (ĐÃ NÂNG CẤP LỚN) ---
 async def perform_full_analysis(text: str, urls: list):
     final_result = None
     is_new_case_by_anna = False
+    context_hint_from_leo = None
     
     print(f"📜 [Bắt đầu] Phân tích tin nhắn: '{text[:150]}...'")
-    print("➡️ [Luồng 1] Bắt đầu gọi Leo (GAS DB-AI)...")
+    print("➡️ [Luồng 1] Bắt đầu gọi Điệp viên Leo (GAS)...")
     gas_result = await call_gas_db_ai(text)
 
-    # <<< LOGIC MỚI: XỬ LÝ SỔ TRẮNG + SỔ ĐEN >>>
     if gas_result and gas_result.get("found"):
-        if gas_result.get("is_safe"):
-            print("✅ [Luồng 1] Thành công. Tìm thấy trong danh sách an toàn (Whitelist).")
+        result_type = gas_result.get("type")
+        if result_type == "dangerous_pattern":
+            # Ưu tiên Sổ Đen: Tìm thấy là nguy hiểm ngay, không cần Anna
+            print("✅ [Luồng 1] THÀNH CÔNG. Tìm thấy trong Sổ Đen (Blacklist).")
             final_result = gas_result.get("data")
+        elif result_type == "context_hint":
+            # Tìm thấy gợi ý, lưu lại để đưa cho Anna
+            print("📝 [Luồng 1] Nhận được thông tin tình báo từ Leo.")
+            context_hint_from_leo = gas_result.get("data")
+            
+    # Nếu final_result chưa được quyết định (tức là không có trong Sổ Đen), thì phải gọi Anna
+    if final_result is None:
+        if context_hint_from_leo:
+             print(f"🟡 [Luồng 2] Bắt đầu gọi Anna-AI với thông tin tình báo: '{context_hint_from_leo}'")
         else:
-            print("✅ [Luồng 1] Thành công. Tìm thấy trong danh sách nguy hiểm (Blacklist).")
-            final_result = gas_result.get("data")
+             print(f"🟡 [Luồng 2] Bắt đầu gọi Anna-AI (không có thông tin tình báo).")
         
-        print(f"📄 [Kết quả của Leo] Trả về dữ liệu từ cache: {json.dumps(final_result, ensure_ascii=False)}")
-    else:
-        # Nếu không tìm thấy trong cả 2 danh sách, mới gọi Anna
-        reason = gas_result.get('reason', 'Không tìm thấy trong CSDL') if gas_result else "Không xác định"
-        print(f"🟡 [Luồng 1] Thất bại (Lý do: {reason}). Bắt đầu Luồng 2: Anna-AI...")
+        # Gọi Anna và "tiêm" gợi ý vào prompt
+        final_result = await analyze_with_anna_ai_http(text, context_hint_from_leo)
         
-        final_result = await analyze_with_anna_ai_http(text)
+        # In kết quả phân tích cuối cùng từ Anna
         print(f"📄 [Kết quả của Anna] Phân tích AI trả về: {json.dumps(final_result, ensure_ascii=False)}")
 
+        # Xử lý nếu Anna trả về lỗi
         if 'error' in final_result:
             return final_result
             
         is_new_case_by_anna = True 
-    # <<< KẾT THÚC LOGIC MỚI >>>
-
+    
+    # Phần xử lý URL và gửi email giữ nguyên
     if urls:
         url_matches = await check_urls_safety_optimized(urls)
         if url_matches:
@@ -237,7 +250,7 @@ async def analyze_text():
         result = await perform_full_analysis(text[:3000], data.get('urls', []))
         
         if 'error' in result:
-            return jsonify({'error': result['error']}), result.get('status_code', 500)
+            return jsonify({'error': result.get('message', 'Lỗi không xác định')}), result.get('status_code', 500)
         
         print("✅ [Phản hồi] Đã gửi kết quả về cho client.")
         return jsonify({'result': result})
@@ -248,4 +261,4 @@ async def analyze_text():
 
 @analyze_endpoint.route('/health', methods=['GET'])
 async def health_check():
-    return jsonify({'status': 'Bình thường', 'architecture': 'Whitelist + Blacklist + Anna-AI'})
+    return jsonify({'status': 'Bình thường', 'architecture': 'Blacklist + Context Hints + Anna-AI'})
