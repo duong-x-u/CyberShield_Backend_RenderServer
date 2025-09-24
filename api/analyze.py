@@ -110,7 +110,6 @@ async def analyze_with_anna_ai_http(text: str, context_hint: str = None):
     api_key = random.choice(GOOGLE_API_KEYS)
     gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
     
-    # Gọi hàm tạo prompt với gợi ý bối cảnh (nếu có)
     prompt = create_anna_ai_prompt(text[:2500], context_hint)
     
     payload = {
@@ -178,7 +177,7 @@ KẾT QUẢ PHÂN TÍCH:
     except Exception as e:
         print(f"🔴 [Email] Gửi email phản hồi thất bại: {e}")
 
-# --- HÀM ĐIỀU PHỐI CHÍNH (ĐÃ NÂNG CẤP LỚN) ---
+# --- HÀM ĐIỀU PHỐI CHÍNH ---
 async def perform_full_analysis(text: str, urls: list):
     final_result = None
     is_new_case_by_anna = False
@@ -190,35 +189,35 @@ async def perform_full_analysis(text: str, urls: list):
 
     if gas_result and gas_result.get("found"):
         result_type = gas_result.get("type")
-        if result_type == "dangerous_pattern":
-            # Ưu tiên Sổ Đen: Tìm thấy là nguy hiểm ngay, không cần Anna
-            print("✅ [Luồng 1] THÀNH CÔNG. Tìm thấy trong Sổ Đen (Blacklist).")
+        
+        # <<< THÊM LOGIC MỚI: XỬ LÝ KHI LEO BÁO TIN NHẮN TẦM THƯỜNG >>>
+        if result_type == "trivial_pattern":
+            print("✅ [Luồng 1] THÀNH CÔNG. Leo xác định tin nhắn là tầm thường (Trivial).")
+            # Trả về kết quả an toàn ngay lập tức, không cần phân tích thêm
+            return {'is_dangerous': False, 'reason': 'Tin nhắn quá đơn giản để phân tích.', 'score': 0, 'types': 'Trivial'}
+        
+        elif result_type == "dangerous_pattern":
+            print("✅ [Luồng 1] THÀNH CÔNG. Tìm thấy trong Sổ Đen (Blacklist) bằng AI.")
             final_result = gas_result.get("data")
         elif result_type == "context_hint":
-            # Tìm thấy gợi ý, lưu lại để đưa cho Anna
             print("📝 [Luồng 1] Nhận được thông tin tình báo từ Leo.")
             context_hint_from_leo = gas_result.get("data")
             
-    # Nếu final_result chưa được quyết định (tức là không có trong Sổ Đen), thì phải gọi Anna
     if final_result is None:
         if context_hint_from_leo:
              print(f"🟡 [Luồng 2] Bắt đầu gọi Anna-AI với thông tin tình báo: '{context_hint_from_leo}'")
         else:
              print(f"🟡 [Luồng 2] Bắt đầu gọi Anna-AI (không có thông tin tình báo).")
         
-        # Gọi Anna và "tiêm" gợi ý vào prompt
         final_result = await analyze_with_anna_ai_http(text, context_hint_from_leo)
         
-        # In kết quả phân tích cuối cùng từ Anna
         print(f"📄 [Kết quả của Anna] Phân tích AI trả về: {json.dumps(final_result, ensure_ascii=False)}")
 
-        # Xử lý nếu Anna trả về lỗi
         if 'error' in final_result:
             return final_result
             
         is_new_case_by_anna = True 
     
-    # Phần xử lý URL và gửi email giữ nguyên
     if urls:
         url_matches = await check_urls_safety_optimized(urls)
         if url_matches:
@@ -261,4 +260,4 @@ async def analyze_text():
 
 @analyze_endpoint.route('/health', methods=['GET'])
 async def health_check():
-    return jsonify({'status': 'Bình thường', 'architecture': 'Blacklist + Context Hints + Anna-AI'})
+    return jsonify({'status': 'Bình thường', 'architecture': 'Trivial Filter + Blacklist (AI) + Context Hints + Anna-AI'})
