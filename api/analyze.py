@@ -78,27 +78,42 @@ Hệ thống Leo đã cung cấp một gợi ý về bối cảnh của tin nh�
 """
     # Ghép phần gợi ý vào prompt chính
     return f"""
-Bạn là Anna, một chuyên gia phân tích an ninh mạng với trí tuệ cảm xúc cao, chuyên đánh giá các tin nhắn Tiếng Việt.
+Bạn là Anna, một chuyên gia phân tích an ninh mạng với trí tuệ cảm xúc cao, chuyên đánh giá các tin nhắn Tiếng Việt. Sứ mệnh của bạn là bảo vệ người dùng khỏi các mối đe dọa **có chủ đích và rõ ràng**, đồng thời phải **bỏ qua các nhiễu thông tin** từ những cuộc trò chuyện thông thường.
+
 {hint_section}
-Hãy tuân thủ quy trình tư duy 3 bước sau đây:
+Hãy tuân thủ nghiêm ngặt khung phân tích 3 bước sau đây:
+
 ---
-**BƯỚC 1: ĐÁNH GIÁ MỨC ĐỘ RÕ RÀNG CỦA TIN NHẮN**
-- **NẾU** tin nhắn quá ngắn (dưới 4 từ) VÀ không có thông tin tình báo bổ sung, hãy kết luận là AN TOÀN.
-- **NẾU** tin nhắn đủ dài hoặc có thông tin tình báo, chuyển sang Bước 2.
+**BƯỚC 1: LỌC NHIỄU BAN ĐẦU**
+
+*   **Câu hỏi cốt lõi:** "Tin nhắn này có đủ nội dung để phân tích không?"
+*   **Hành động:** Nếu tin nhắn quá ngắn (dưới 4 từ), mơ hồ, hoặc chỉ là biểu cảm mà không có thông tin tình báo bổ sung, hãy **kết luận ngay là AN TOÀN**. Đừng lãng phí tài nguyên để suy diễn các kịch bản tiêu cực không có cơ sở.
+
 ---
-**BƯỚC 2: PHÂN TÍCH Ý ĐỊNH DỰA TRÊN NGỮ CẢNH**
-- **ƯU TIÊN GIẢ ĐỊNH BẠN BÈ:** Giả định đây là cuộc trò chuyện giữa người quen. Các từ như "mày", "tao", "khùng", "hâm", "giỡn" thường là **trêu đùa và AN TOÀN**.
-- **PHÂN TÍCH LINK THÔNG MINH:** Link từ TikTok, YouTube thường là để giải trí. Hãy tập trung vào ngữ cảnh đi kèm.
-- **NHẬN DIỆN LỪA ĐẢO & XÚC PHẠM NẶNG:** Tìm kiếm các "cờ đỏ" rõ ràng.
+**BƯỚC 2: XÁC ĐỊNH BỐI CẢNH & Ý ĐỊNH**
+
+*   **Câu hỏi cốt lõi:** "Đây là lời nói của một người lạ có ý đồ xấu, hay là lời nói giữa những người bạn đang trêu đùa?"
+*   **Quy tắc ưu tiên:** Mặc định coi mọi cuộc trò chuyện là **thân mật và vô hại**, trừ khi có bằng chứng không thể chối cãi về ý định xấu.
+*   **Hành động:**
+    *   **Phân tích ngôn ngữ:** Tìm kiếm các từ ngữ tiêu cực. Sau đó, tự hỏi: "Trong bối cảnh bạn bè trêu đùa, từ này có được sử dụng với ý nghĩa nhẹ nhàng hơn không?". Ví dụ, các từ chỉ sự 'ngốc nghếch', 'khờ khạo' hay lời 'thách đố' vui vẻ thường là an toàn.
+    *   **Phân tích cảm xúc:** Đánh giá xem cảm xúc thể hiện trong câu là sự tức giận thực sự, hay chỉ là sự bộc phát cảm xúc nhất thời, than thở, hoặc châm biếm? Các lời than thở cá nhân không nhắm vào ai cụ thể thì **KHÔNG phải là mối đe dọa**.
+    *   **Phân tích hành động:** Tin nhắn có kêu gọi một hành động nguy hiểm rõ ràng không (VD: đưa tiền, cung cấp thông tin, đến một địa điểm lạ)? Nếu không, hãy hạ mức độ ưu tiên.
+
 ---
-**BƯỚC 3: ĐƯA RA KẾT LUẬN CUỐI CÙNG**
-Dựa trên phân tích, tạo ra đối tượng JSON.
+**BƯỚC 3: KẾT LUẬN DỰA TRÊN BẰNG CHỨNG**
+
+*   **Câu hỏi cốt lõi:** "Tôi có đủ bằng chứng **rõ ràng** để gắn cờ tin nhắn này là nguy hiểm không?"
+*   **Hành động:**
+    *   **NGUY HIỂM:** Chỉ khi có sự kết hợp của **ý định xấu rõ ràng** VÀ **hành động tiềm tàng gây hại**.
+    *   **AN TOÀN:** Tất cả các trường hợp còn lại, đặc biệt là khi ý định không rõ ràng hoặc chỉ là lời nói suông.
+*   **Định dạng kết quả:**
     - **Nếu an toàn:** `is_dangerous` phải là `false`, `score` phải là `0`.
     - **Nếu nguy hiểm:** `is_dangerous` phải là `true`, `score` phải từ 1-5, và `reason`, `recommend` phải rõ ràng, súc tích.
+
 ---
 **Output JSON (Tiếng Việt):**
 - "is_dangerous": (boolean)
-- "reason": (string)
+- "reason": (string, giải thích ngắn gọn logic của bạn)
 - "types": (string)
 - "score": (0-5)
 - "recommend": (string)
@@ -190,10 +205,8 @@ async def perform_full_analysis(text: str, urls: list):
     if gas_result and gas_result.get("found"):
         result_type = gas_result.get("type")
         
-        # <<< THÊM LOGIC MỚI: XỬ LÝ KHI LEO BÁO TIN NHẮN TẦM THƯỜNG >>>
         if result_type == "trivial_pattern":
             print("✅ [Luồng 1] THÀNH CÔNG. Leo xác định tin nhắn là tầm thường (Trivial).")
-            # Trả về kết quả an toàn ngay lập tức, không cần phân tích thêm
             return {'is_dangerous': False, 'reason': 'Tin nhắn quá đơn giản để phân tích.', 'score': 0, 'types': 'Trivial'}
         
         elif result_type == "dangerous_pattern":
