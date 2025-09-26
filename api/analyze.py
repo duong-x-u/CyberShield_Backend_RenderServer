@@ -123,13 +123,13 @@ Hãy tuân thủ nghiêm ngặt khung phân tích 3 bước sau đây:
 
 async def analyze_with_anna_ai_http(text: str, context_hint: str = None):
     api_key = random.choice(GOOGLE_API_KEYS)
-    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
     
     prompt = create_anna_ai_prompt(text[:2500], context_hint)
     
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": { "temperature": 0.2, "maxOutputTokens": 400, "responseMimeType": "application/json" }
+        "generationConfig": { "temperature": 0.2, "maxOutputTokens": 400, "responseMimeType": "application/json", "thinkingConfig": {"thinkingBudget": 0.5} }
     }
     try:
         timeout = aiohttp.ClientTimeout(total=25)
