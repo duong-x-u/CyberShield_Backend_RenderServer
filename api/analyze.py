@@ -129,7 +129,7 @@ async def analyze_with_anna_ai_http(text: str, context_hint: str = None):
     
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": { "temperature": 0.2, "maxOutputTokens": 400, "responseMimeType": "application/json", "thinkingConfig": {"thinkingBudget": 0.5} }
+        "generationConfig": { "temperature": 0.2, "maxOutputTokens": 400, "responseMimeType": "application/json"}
     }
     try:
         timeout = aiohttp.ClientTimeout(total=25)
