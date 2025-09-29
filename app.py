@@ -1,13 +1,14 @@
 from dotenv import load_dotenv
 load_dotenv()
-from flask import Flask, request, jsonify, send_file
+
+# SỬA LẠI DÒNG NÀY: Thêm 'send_from_directory' và bỏ 'send_file' nếu không dùng chỗ khác
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
 import logging
 from api.analyze import analyze_endpoint
-from webhook import webhook_blueprint  # Import Blueprint từ file webhook.py
+from webhook import webhook_blueprint
 from zalo_webhook import zalo_blueprint
-import os
 
 # Configure logging
 logging.basicConfig(
@@ -22,8 +23,8 @@ CORS(app)
 
 # Register blueprints
 app.register_blueprint(analyze_endpoint, url_prefix='/api')
-app.register_blueprint(webhook_blueprint, url_prefix='/messenger') # Đăng ký Blueprint của webhook
-app.register_blueprint(zalo_blueprint, url_prefix='/zalo') # <-- MỚI: Đăng ký Blueprint của Zalo
+app.register_blueprint(webhook_blueprint, url_prefix='/messenger')
+app.register_blueprint(zalo_blueprint, url_prefix='/zalo')
 
 
 @app.route('/')
@@ -35,8 +36,9 @@ def home():
         'version': '1.0.0',
         'server': '0xCyb3r-Sh13ld',
         'message': [
-    "Chào mừng đến với Server của Cyber Shield",
-    "Kẻ địch sẽ xuất trận sau 5 giây"]
+            "Chào mừng đến với Server của Cyber Shield",
+            "Kẻ địch sẽ xuất trận sau 5 giây"
+        ]
     })
 
 @app.route('/health')
@@ -50,13 +52,28 @@ def health_check():
         'note': 'Tế đàn còn ổn'
     })
 
-@app.route('/zalo_verifierJIUJTRN25q5owArPZi8IPNVYeZkRb7LZE3Gm.html')
-def zalo_domain_verification():
-    try:
-        # Flask sẽ tìm file này trong thư mục 'static' mà bạn vừa tạo
-        return send_file('static/JIUJTRN25q5owArPZi8IPNVYeZkRb7LZE3Gm.html')
-    except FileNotFoundError:
-        return "Verification file not found.", 404
+# DI CHUYỂN ROUTE XÁC THỰC XUỐNG DƯỚI NÀY
+@app.route('/<path:filename>')
+def serve_static_file(filename):
+    # Chỉ phản hồi nếu tên file bắt đầu bằng 'zalo_verifier'
+    if filename.startswith('zalo_verifier') and filename.endswith('.html'):
+        # Lấy đường dẫn đến thư mục chứa file app.py hiện tại
+        root_dir = os.path.dirname(os.path.abspath(__file__))
+        # Tìm file trong thư mục 'static' nằm cùng cấp
+        static_dir = os.path.join(root_dir, 'static')
+        
+        try:
+            print(f"Attempting to serve file: {filename} from directory: {static_dir}")
+            return send_from_directory(static_dir, filename)
+        except FileNotFoundError:
+            print(f"Error: File {filename} not found in {static_dir}")
+            # Trả về lỗi 404 mặc định của Flask, để errorhandler bên dưới xử lý
+            from werkzeug.exceptions import NotFound
+            raise NotFound()
+    
+    # Nếu không khớp, để Flask tiếp tục xử lý và trả về 404
+    from werkzeug.exceptions import NotFound
+    raise NotFound()
 
 
 @app.errorhandler(404)
@@ -71,3 +88,4 @@ def internal_error(error):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
+Bây giờ bạn hãy cập nhật lại file `app.py`, commit và deploy. Chắc chắn lần này sẽ thành công
