@@ -1,7 +1,6 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-# SỬA LẠI DÒNG NÀY: Thêm 'send_from_directory' và bỏ 'send_file' nếu không dùng chỗ khác
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
@@ -9,6 +8,7 @@ import logging
 from api.analyze import analyze_endpoint
 from webhook import webhook_blueprint
 from zalo_webhook import zalo_blueprint
+from werkzeug.exceptions import NotFound # Thêm import này
 
 # Configure logging
 logging.basicConfig(
@@ -26,6 +26,17 @@ app.register_blueprint(analyze_endpoint, url_prefix='/api')
 app.register_blueprint(webhook_blueprint, url_prefix='/messenger')
 app.register_blueprint(zalo_blueprint, url_prefix='/zalo')
 
+
+# --- ROUTE XÁC THỰC ZALO (CÁCH TIẾP CẬN ĐƠN GIẢN NHẤT) ---
+# QUAN TRỌNG: Đặt route này ngay phía trên route home ('/')
+@app.route('/zalo_verifierJIUJTRN25q5owArPZi8IPNVYeZkRb7LZE3Gm.html')
+def zalo_verification_file():
+    try:
+        # 'static' là tên thư mục, tên file là tham số thứ hai
+        return send_from_directory('static', 'zalo_verifierJIUJTRN25q5owArPZi8IPNVYeZkRb7LZE3Gm.html')
+    except NotFound:
+        # Nếu không tìm thấy, để trình xử lý lỗi 404 chung xử lý
+        raise
 
 @app.route('/')
 def home():
@@ -52,29 +63,8 @@ def health_check():
         'note': 'Tế đàn còn ổn'
     })
 
-# DI CHUYỂN ROUTE XÁC THỰC XUỐNG DƯỚI NÀY
-@app.route('/<path:filename>')
-def serve_static_file(filename):
-    # Chỉ phản hồi nếu tên file bắt đầu bằng 'zalo_verifier'
-    if filename.startswith('zalo_verifier') and filename.endswith('.html'):
-        # Lấy đường dẫn đến thư mục chứa file app.py hiện tại
-        root_dir = os.path.dirname(os.path.abspath(__file__))
-        # Tìm file trong thư mục 'static' nằm cùng cấp
-        static_dir = os.path.join(root_dir, 'static')
-        
-        try:
-            print(f"Attempting to serve file: {filename} from directory: {static_dir}")
-            return send_from_directory(static_dir, filename)
-        except FileNotFoundError:
-            print(f"Error: File {filename} not found in {static_dir}")
-            # Trả về lỗi 404 mặc định của Flask, để errorhandler bên dưới xử lý
-            from werkzeug.exceptions import NotFound
-            raise NotFound()
-    
-    # Nếu không khớp, để Flask tiếp tục xử lý và trả về 404
-    from werkzeug.exceptions import NotFound
-    raise NotFound()
-
+# XÓA BỎ HOÀN TOÀN ROUTE "/<path:filename>" CŨ
+# BẠN KHÔNG CẦN NÓ NỮA
 
 @app.errorhandler(404)
 def not_found(error):
