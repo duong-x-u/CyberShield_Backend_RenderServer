@@ -88,4 +88,3 @@ def internal_error(error):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
-Bây giờ bạn hãy cập nhật lại file `app.py`, commit và deploy. Chắc chắn lần này sẽ thành công
