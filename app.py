@@ -6,6 +6,7 @@ import os
 import logging
 from api.analyze import analyze_endpoint
 from webhook import webhook_blueprint  # Import Blueprint từ file webhook.py
+from zalo_webhook import zalo_blueprint
 
 # Configure logging
 logging.basicConfig(
@@ -21,6 +22,8 @@ CORS(app)
 # Register blueprints
 app.register_blueprint(analyze_endpoint, url_prefix='/api')
 app.register_blueprint(webhook_blueprint, url_prefix='/messenger') # Đăng ký Blueprint của webhook
+app.register_blueprint(zalo_blueprint, url_prefix='/zalo') # <-- MỚI: Đăng ký Blueprint của Zalo
+
 
 @app.route('/')
 def home():
