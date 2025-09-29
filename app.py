@@ -1,6 +1,5 @@
 from dotenv import load_dotenv
 load_dotenv()
-
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
@@ -26,18 +25,6 @@ app.register_blueprint(analyze_endpoint, url_prefix='/api')
 app.register_blueprint(webhook_blueprint, url_prefix='/messenger')
 app.register_blueprint(zalo_blueprint, url_prefix='/zalo')
 
-
-# --- ROUTE XÁC THỰC ZALO (CÁCH TIẾP CẬN ĐƠN GIẢN NHẤT) ---
-# QUAN TRỌNG: Đặt route này ngay phía trên route home ('/')
-@app.route('/zalo_verifierJIUJTRN25q5owArPZi8IPNVYeZkRb7LZE3Gm.html')
-def zalo_verification_file():
-    try:
-        # 'static' là tên thư mục, tên file là tham số thứ hai
-        return send_from_directory('static', 'zalo_verifierJIUJTRN25q5owArPZi8IPNVYeZkRb7LZE3Gm.html')
-    except NotFound:
-        # Nếu không tìm thấy, để trình xử lý lỗi 404 chung xử lý
-        raise
-
 @app.route('/')
 def home():
     """Home endpoint - cyberpunk gaming vibe"""
@@ -62,9 +49,6 @@ def health_check():
         'service': 'cybershield-backend',
         'note': 'Tế đàn còn ổn'
     })
-
-# XÓA BỎ HOÀN TOÀN ROUTE "/<path:filename>" CŨ
-# BẠN KHÔNG CẦN NÓ NỮA
 
 @app.errorhandler(404)
 def not_found(error):
