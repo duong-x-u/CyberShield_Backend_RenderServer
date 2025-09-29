@@ -1,12 +1,11 @@
 from dotenv import load_dotenv
 load_dotenv()
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
 import logging
 from api.analyze import analyze_endpoint
 from webhook import webhook_blueprint
-from zalo_webhook import zalo_blueprint
 from werkzeug.exceptions import NotFound # Thêm import này
 
 # Configure logging
@@ -23,7 +22,6 @@ CORS(app)
 # Register blueprints
 app.register_blueprint(analyze_endpoint, url_prefix='/api')
 app.register_blueprint(webhook_blueprint, url_prefix='/messenger')
-app.register_blueprint(zalo_blueprint, url_prefix='/zalo')
 
 @app.route('/')
 def home():
