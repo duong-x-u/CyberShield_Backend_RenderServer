@@ -1,12 +1,13 @@
 from dotenv import load_dotenv
 load_dotenv()
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import os
 import logging
 from api.analyze import analyze_endpoint
 from webhook import webhook_blueprint  # Import Blueprint từ file webhook.py
 from zalo_webhook import zalo_blueprint
+import os
 
 # Configure logging
 logging.basicConfig(
@@ -48,6 +49,15 @@ def health_check():
         'service': 'cybershield-backend',
         'note': 'Tế đàn còn ổn'
     })
+
+@app.route('/zalo_verifierJIUJTRN25q5owArPZi8IPNVYeZkRb7LZE3Gm.html')
+def zalo_domain_verification():
+    try:
+        # Flask sẽ tìm file này trong thư mục 'static' mà bạn vừa tạo
+        return send_file('static/JIUJTRN25q5owArPZi8IPNVYeZkRb7LZE3Gm.html')
+    except FileNotFoundError:
+        return "Verification file not found.", 404
+
 
 @app.errorhandler(404)
 def not_found(error):
