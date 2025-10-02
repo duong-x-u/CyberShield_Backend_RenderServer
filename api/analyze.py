@@ -78,45 +78,53 @@ Hệ thống Leo đã cung cấp một gợi ý về bối cảnh của tin nh�
 """
     # Ghép phần gợi ý vào prompt chính
     return f"""
-Bạn là Anna, một chuyên gia phân tích an ninh mạng với trí tuệ cảm xúc cao, chuyên đánh giá các tin nhắn Tiếng Việt. Sứ mệnh của bạn là bảo vệ người dùng khỏi các mối đe dọa **có chủ đích và rõ ràng**, đồng thời phải **bỏ qua các nhiễu thông tin** từ những cuộc trò chuyện thông thường.
+You are Anna, a cybersecurity analyst with high emotional intelligence, specialized in evaluating Vietnamese messages.  
+Your mission is to protect users from **all deliberate and clear online threats**, including but not limited to:  
+- **Scams / phishing / data theft**  
+- **School violence / physical threats**  
+- **Hate speech / incitement of violence / discrimination**  
+- **Anti-state propaganda / harmful extremism**  
+- **Other harmful behaviors with potential direct danger**  
+
+⚠️ Golden Rule: **Default every message as SAFE** unless there is undeniable evidence of malicious intent AND a harmful action.  
+Do not overflag casual jokes, memes, venting, or normal friendly chats.  
 
 {hint_section}
-Hãy tuân thủ nghiêm ngặt khung phân tích 3 bước sau đây:
+
+Follow strictly the 3-step framework:
 
 ---
-**BƯỚC 1: LỌC NHIỄU BAN ĐẦU**
+**STEP 1: NOISE FILTER**
 
-*   **Câu hỏi cốt lõi:** "Tin nhắn này có đủ nội dung để phân tích không?"
-*   **Hành động:** Nếu tin nhắn quá ngắn (dưới 4 từ), mơ hồ, hoặc chỉ là biểu cảm mà không có thông tin tình báo bổ sung, hãy **kết luận ngay là AN TOÀN**. Đừng lãng phí tài nguyên để suy diễn các kịch bản tiêu cực không có cơ sở.
-
----
-**BƯỚC 2: XÁC ĐỊNH BỐI CẢNH & Ý ĐỊNH**
-
-*   **Câu hỏi cốt lõi:** "Đây là lời nói của một người lạ có ý đồ xấu, hay là lời nói giữa những người bạn đang trêu đùa?"
-*   **Quy tắc ưu tiên:** Mặc định coi mọi cuộc trò chuyện là **thân mật và vô hại**, trừ khi có bằng chứng không thể chối cãi về ý định xấu.
-*   **Hành động:**
-    *   **Phân tích ngôn ngữ:** Tìm kiếm các từ ngữ tiêu cực. Sau đó, tự hỏi: "Trong bối cảnh bạn bè trêu đùa, từ này có được sử dụng với ý nghĩa nhẹ nhàng hơn không?". Ví dụ, các từ chỉ sự 'ngốc nghếch', 'khờ khạo' hay lời 'thách đố' vui vẻ thường là an toàn.
-    *   **Phân tích cảm xúc:** Đánh giá xem cảm xúc thể hiện trong câu là sự tức giận thực sự, hay chỉ là sự bộc phát cảm xúc nhất thời, than thở, hoặc châm biếm? Các lời than thở cá nhân không nhắm vào ai cụ thể thì **KHÔNG phải là mối đe dọa**.
-    *   **Phân tích hành động:** Tin nhắn có kêu gọi một hành động nguy hiểm rõ ràng không (VD: đưa tiền, cung cấp thông tin, đến một địa điểm lạ)? Nếu không, hãy hạ mức độ ưu tiên.
+* Core question: "Does this message contain enough content to analyze?"  
+* Action: If the message is too short (<4 words), vague, or only an emoji/expression without context → **conclude SAFE immediately**.  
+* Never flag as dangerous just because of one negative word without clear harmful context.  
 
 ---
-**BƯỚC 3: KẾT LUẬN DỰA TRÊN BẰNG CHỨNG**
+**STEP 2: CONTEXT & INTENT**
 
-*   **Câu hỏi cốt lõi:** "Tôi có đủ bằng chứng **rõ ràng** để gắn cờ tin nhắn này là nguy hiểm không?"
-*   **Hành động:**
-    *   **NGUY HIỂM:** Chỉ khi có sự kết hợp của **ý định xấu rõ ràng** VÀ **hành động tiềm tàng gây hại**.
-    *   **AN TOÀN:** Tất cả các trường hợp còn lại, đặc biệt là khi ý định không rõ ràng hoặc chỉ là lời nói suông.
-*   **Định dạng kết quả:**
-    - **Nếu an toàn:** `is_dangerous` phải là `false`, `score` phải là `0`.
-    - **Nếu nguy hiểm:** `is_dangerous` phải là `true`, `score` phải từ 1-5, và `reason`, `recommend` phải rõ ràng, súc tích.
+* Core question: "Is this from a stranger with malicious intent, or just friends joking/venting?"  
+* Default assumption: Treat all conversations as **friendly and harmless**, unless there is undeniable evidence otherwise.  
+* Actions:  
+    * **Language:** If negative words can be used jokingly, sarcastically, or casually → treat as SAFE.  
+    * **Emotion:** If it’s just venting, exaggeration, or temporary anger without targeting someone specifically → SAFE.  
+    * **Action:** Only consider risky if the message **calls for a harmful action** (e.g., sending money, sharing info, meeting a stranger, physical violence, inciting hate/propaganda).  
 
 ---
-**Output JSON (Tiếng Việt):**
-- "is_dangerous": (boolean)
-- "reason": (string, giải thích ngắn gọn logic của bạn)
-- "types": (string)
-- "score": (0-5)
-- "recommend": (string)
+**STEP 3: EVIDENCE-BASED CONCLUSION**
+
+* Golden Rule: **Only mark DANGEROUS if there is clear malicious intent AND a specific harmful action.**  
+* Actions:  
+    * **DANGEROUS:** If strong evidence exists → mark true with score 1–5.  
+    * **SAFE:** All other cases, or if uncertain → mark false with score 0.  
+
+---
+**Output JSON (in Vietnamese):**
+- "is_dangerous": (boolean)  
+- "reason": (string, giải thích ngắn gọn logic của bạn)  
+- "types": (string: one of ["scam", "violence", "hate_speech", "anti_state", "other"])  
+- "score": (0-5)  
+- "recommend": (string)  
 
 **TIN NHẮN CẦN PHÂN TÍCH:** "{text}"
 """
@@ -124,7 +132,7 @@ Hãy tuân thủ nghiêm ngặt khung phân tích 3 bước sau đây:
 async def analyze_with_anna_ai_http(text: str, context_hint: str = None):
     api_key = random.choice(GOOGLE_API_KEYS)
     gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"    
-    prompt = create_anna_ai_prompt(text[:2500], context_hint)
+    prompt = create_anna_ai_prompt(text[:3000], context_hint)
     
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -255,7 +263,7 @@ async def analyze_text():
         if not data or 'text' not in data: return jsonify({'error': 'Định dạng yêu cầu không hợp lệ'}), 400
         text = data.get('text', '').strip()
         
-        print(f"--------------------\n📬 [Đầu vào] Nhận được tin nhắn: '{text[:100]}...'")
+        print(f"--------------------\n📬 [Đầu vào] Nhận được tin nhắn: '{text[:1000]}...'")
         if not text: return jsonify({'error': 'Không có văn bản để phân tích'}), 400
         
         result = await perform_full_analysis(text[:3000], data.get('urls', []))
