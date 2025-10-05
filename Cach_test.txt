@@ -4,18 +4,23 @@
 4. Paste dòng lệnh sau vào trong tab console:
 
 """
-fetch("https://cybershield-backend-renderserver.onrender.com/api/analyze", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json"
-  },
-  body: JSON.stringify({
-    text: "<NHẬP NỘI DUNG CẦN TEST>"
-  })
-})
-.then(res => res.json())
-.then(data => console.log("KQ server trả về:", data))
-.catch(err => console.error("Lỗi:", err));
+(async () => {
+  try {
+    const res = await fetch("https://cybershield-backend-renderserver.onrender.com/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: `<Nhập nội dung cần test`
+      })
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    const data = await res.json();
+    console.log("KQ server trả về:", data);
+  } catch (err) {
+    console.error("Lỗi:", err);
+  }
+})();
 """
 
 5. Thay thế <NHẬP NỘI DUNG CẦN TEST> bằng văn bản của bạn
