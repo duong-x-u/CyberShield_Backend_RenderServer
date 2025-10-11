@@ -8,12 +8,32 @@ from api.analyze import analyze_endpoint
 from webhook import webhook_blueprint
 from werkzeug.exceptions import NotFound # Thêm import này
 
+# Gmail API imports (sử dụng cho gửi email cảnh báo)
+import base64
+from email.mime.text import MIMEText
+from googleapiclient.discovery import build
+from google.oauth2.credentials import Credentials
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Gmail API token path từ biến môi trường
+GMAIL_TOKEN_PATH = os.getenv('GMAIL_TOKEN_PATH', '/etc/secrets/token.json')
+
+# Hàm gửi email bằng Gmail API (cần dùng ở api/analyze.py)
+def send_email_gmail_api(to, subject, body):
+    creds = Credentials.from_authorized_user_file(GMAIL_TOKEN_PATH, ['https://www.googleapis.com/auth/gmail.send'])
+    service = build('gmail', 'v1', credentials=creds)
+    message = MIMEText(body)
+    message['to'] = to
+    message['subject'] = subject
+    raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+    result = service.users().messages().send(userId='me', body={'raw': raw}).execute()
+    return result
 
 # Initialize Flask app
 app = Flask(__name__)
