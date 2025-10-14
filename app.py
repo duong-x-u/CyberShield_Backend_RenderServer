@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 load_dotenv()
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import os
 import logging
@@ -45,17 +45,20 @@ app.register_blueprint(webhook_blueprint, url_prefix='/messenger')
 
 @app.route('/')
 def home():
-    """Home endpoint - cyberpunk gaming vibe"""
-    return jsonify({
-        'banner': '⚡ WELCOME TO ARENA OF CYBERSHIELD ⚡',
-        'status': '🟢 Sẵn Sàng',
-        'version': '1.0.0',
-        'server': '0xCyb3r-Sh13ld',
-        'message': [
-            "Chào mừng đến với Server của Cyber Shield",
-            "Kẻ địch sẽ xuất trận sau 5 giây"
-        ]
-    })
+    #"""Home endpoint - cyberpunk gaming vibe"""
+    #return jsonify({
+    #    'banner': '⚡ WELCOME TO ARENA OF CYBERSHIELD ⚡',
+    #    'status': '🟢 Sẵn Sàng',
+    #    'version': '1.0.0',
+    #    'server': '0xCyb3r-Sh13ld',
+    #    'message': [
+    #        "Chào mừng đến với Server của Cyber Shield",
+    #        "Kẻ địch sẽ xuất trận sau 5 giây"
+    #    ]
+    #})
+    return render_template('index.html')
+
+
 
 @app.route('/health')
 def health_check():
