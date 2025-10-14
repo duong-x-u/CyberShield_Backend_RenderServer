@@ -14,6 +14,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultCard = document.getElementById('result-card');
 
     const MAX_CHARS = 10000; // Đồng bộ với maxlength của textarea
+    const analyzeBtnOriginalHTML = analyzeBtn.innerHTML;
+
+    // --- CÁC HÀM TIỆN ÍCH ---
+
+    function setControlsDisabled(disabled) {
+        textInput.disabled = disabled;
+        analyzeBtn.disabled = disabled;
+        pasteBtn.disabled = disabled;
+        clearBtn.disabled = disabled;
+    }
 
     // --- CÁC HÀM XỬ LÝ SỰ KIỆN ---
 
@@ -35,8 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
         textInput.value = '';
         updateCharCounter();
         resultCard.innerHTML = '';
-        resultCardContainer.className = '';
-        resultCardContainer.style.display = 'none'; // Ẩn container đi
+        resultCardContainer.className = ''; // Xóa class để CSS ẩn đi
         textInput.focus();
     });
 
@@ -60,9 +69,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- CÁC HÀM CHÍNH ---
 
     async function performAnalysis(text) {
-        // 1. Hiển thị trạng thái đang tải
-        resultCardContainer.style.display = 'block';
-        resultCardContainer.className = 'loading';
+        setControlsDisabled(true);
+        analyzeBtn.innerHTML = '<div class="loader-small"></div> Đang phân tích...';
+        resultCardContainer.className = 'loading'; // Thêm class để CSS hiển thị
         resultCard.innerHTML = '<div class="loader"></div><p style="text-align:center; margin-top:1rem;">Đang kết nối tới Anna-AI...</p>';
 
         try {
@@ -90,6 +99,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // 5. Xử lý lỗi (mạng, máy chủ, etc.)
             console.error('Lỗi khi phân tích:', error);
             displayError(error.message);
+        } finally {
+            setControlsDisabled(false);
+            analyzeBtn.innerHTML = analyzeBtnOriginalHTML;
         }
     }
 
@@ -113,7 +125,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function displayError(errorMessage) {
-        resultCardContainer.style.display = 'block';
         resultCardContainer.className = 'error';
         resultCard.innerHTML = `
             <h2 id="result-status">LỖI KẾT NỐI</h2>

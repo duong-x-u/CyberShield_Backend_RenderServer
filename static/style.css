@@ -229,24 +229,30 @@ header p {
     border: 1px dashed var(--border-color);
     border-radius: 4px;
     padding: 1rem;
-    transition: border-color 0.5s ease;
     overflow: auto; /* Thêm thanh cuộn nếu nội dung quá dài */
+
+    /* --- Cải tiến cho hiệu ứng --- */
+    opacity: 0;
+    transform: translateY(15px);
+    pointer-events: none;
+    transition: opacity 0.4s ease-out, transform 0.4s ease-out, border-color 0.4s ease;
+}
+
+/* Trạng thái hiển thị khi có class */
+#result-card-container.loading,
+#result-card-container.safe,
+#result-card-container.dangerous,
+#result-card-container.error {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
 }
 
 #result-card {
-    display: none; /* Ẩn ban đầu */
     width: 100%;
     height: 100%;
     padding: 1.5rem;
-    border: 1px solid transparent;
     border-radius: 4px;
-    transition: all 0.5s ease;
-    animation: fadeIn 0.5s ease-in-out;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
 }
 
 /* TRẠNG THÁI LOADING */
@@ -261,17 +267,33 @@ header p {
     animation: rotation 1s linear infinite;
 }
 
-.loader::after {
+.loader-small {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--background-color);
+    border-radius: 50%;
+    display: inline-block;
+    vertical-align: middle;
+    position: relative;
+    animation: rotation 0.8s linear infinite;
+}
+
+.loader::after, .loader-small::after {
     content: '';
     position: absolute;
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
-    width: 40px;
-    height: 40px;
     border-radius: 50%;
     border: 3px solid;
     border-color: var(--background-color) transparent;
+}
+
+.loader-small::after { 
+    width: 14px; 
+    height: 14px; 
+    border-width: 2px;
+    border-color: var(--primary-color) transparent;
 }
 
 @keyframes rotation {
@@ -279,10 +301,19 @@ header p {
     100% { transform: rotate(360deg); }
 }
 
-/* THAY ĐỔI MÀU SẮC DỰA TRÊN KẾT QUẢ */
-#result-card.safe { border-color: var(--safe-color); box-shadow: 0 0 20px rgba(0, 255, 127, 0.5); }
-#result-card.dangerous { border-color: var(--danger-color); box-shadow: 0 0 20px rgba(255, 0, 255, 0.5); }
-#result-card.error { border-color: var(--warning-color); box-shadow: 0 0 20px rgba(243, 156, 18, 0.5); }
+/* THAY ĐỔI MÀU SẮC DỰA TRÊN KẾT QUẢ (ÁP DỤNG CHO CONTAINER) */
+#result-card-container.safe {
+    border-color: var(--safe-color);
+    box-shadow: 0 0 20px rgba(0, 255, 127, 0.5);
+}
+#result-card-container.dangerous {
+    border-color: var(--danger-color);
+    box-shadow: 0 0 20px rgba(255, 0, 255, 0.5);
+}
+#result-card-container.error {
+    border-color: var(--warning-color);
+    box-shadow: 0 0 20px rgba(243, 156, 18, 0.5);
+}
 
 #result-status {
     font-size: 1.5rem;
@@ -293,9 +324,9 @@ header p {
     transition: all 0.5s;
 }
 
-#result-card.safe #result-status { color: var(--safe-color); border-color: var(--safe-color); }
-#result-card.dangerous #result-status { color: var(--danger-color); border-color: var(--danger-color); }
-#result-card.error #result-status { color: var(--warning-color); border-color: var(--warning-color); }
+#result-card-container.safe #result-status { color: var(--safe-color); border-color: var(--safe-color); }
+#result-card-container.dangerous #result-status { color: var(--danger-color); border-color: var(--danger-color); }
+#result-card-container.error #result-status { color: var(--warning-color); border-color: var(--warning-color); }
 
 .result-details ul {
     list-style: none;
