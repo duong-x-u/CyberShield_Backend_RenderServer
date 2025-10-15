@@ -176,7 +176,7 @@ async def perform_full_analysis(text: str, urls: list):
     is_new_case_by_anna = False
     context_hint_from_leo = None
     
-    print(f"📜 [Bắt đầu] Phân tích tin nhắn: '{text[:150]}...'")
+    print(f"📜 [Bắt đầu] Phân tích tin nhắn: '{text[:4000]}'")
     print("➡️ [Luồng 1] Bắt đầu gọi Điệp viên Leo (GAS)...")
     gas_result = await call_gas_db_ai(text)
 
@@ -254,4 +254,5 @@ async def analyze_text():
 
 @analyze_endpoint.route('/health', methods=['GET'])
 async def health_check():
+
     return jsonify({'status': 'Bình thường', 'architecture': 'Trivial Filter + Blacklist (AI) + Context Hints + Anna-AI'})
