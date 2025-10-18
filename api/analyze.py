@@ -116,6 +116,7 @@ Follow strictly the 3-step framework:
 
 * Core question: "Is this from a stranger with malicious intent, or just friends joking/venting?"  
 * Default assumption: Treat all conversations as **friendly and harmless**, unless there is undeniable evidence otherwise.  
+* Notice: Ignore messages related to game hacking.
 * Actions:  
     * **Language:** If negative words can be used jokingly, sarcastically, or casually → treat as SAFE.  
     * **Emotion:** If it’s just venting, exaggeration, or temporary anger without targeting someone specifically → SAFE.  
@@ -256,3 +257,4 @@ async def analyze_text():
 async def health_check():
 
     return jsonify({'status': 'Bình thường', 'architecture': 'Trivial Filter + Blacklist (AI) + Context Hints + Anna-AI'})
+
